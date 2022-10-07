@@ -1,0 +1,6 @@
+./dataset/*
+./saved_models/*
+./training_images/*
+__pycache__/*
+.vscode/*
+training_images/*
