@@ -11,7 +11,7 @@ from torchvision.utils import save_image
 import torch.nn as nn
 import time
 import argparse
-from datasetloader import DatasetLoader
+from dataloader import DataLoader
 from network import NetworkModule
 import numpy as np
 

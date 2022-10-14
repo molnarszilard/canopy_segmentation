@@ -4,7 +4,7 @@ import os
 import cv2
 import numpy as np
 
-class DatasetLoader(data.Dataset):
+class DataLoader(data.Dataset):
     
     def __init__(self, root='./dataset', train=True):
         self.root = Path(root)
@@ -30,7 +30,7 @@ class DatasetLoader(data.Dataset):
 
 if __name__ == '__main__':
     # Testing
-    dataset = DatasetLoader()
+    dataset = DataLoader()
     print(len(dataset))
     for item in dataset[0]:
         print(item.size())
