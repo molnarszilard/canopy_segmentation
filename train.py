@@ -70,9 +70,9 @@ if __name__ == '__main__':
     if torch.cuda.is_available() and not args.cuda:
         print("WARNING: CUDA device is available. You might want to run the program with --cuda=True")
 
-    train_dataset = DatasetLoader(root=args.data_dir,train=True)
+    train_dataset = DataLoader(root=args.data_dir,train=True)
     train_size = len(train_dataset)
-    eval_dataset = DatasetLoader(root=args.data_dir,train=False)
+    eval_dataset = DataLoader(root=args.data_dir,train=False)
     eval_size = len(eval_dataset)
     print(train_size)
 

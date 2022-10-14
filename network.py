@@ -63,7 +63,7 @@ class NetworkModule(nn.Module):
         self.smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
         self.smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
         self.smooth4 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.smooth5 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        # self.smooth5 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
         # Aggregate layers
         self.agg1 = agg_node(256, 64)
@@ -71,18 +71,18 @@ class NetworkModule(nn.Module):
         self.agg3 = agg_node(256, 64)
         self.agg4 = agg_node(256, 64)
         self.agg5 = agg_node(256, 64)
-        self.agg6 = agg_node(256, 64)
+        # self.agg6 = agg_node(256, 64)
         
         # Upshuffle layers
-        self.up1 = upshuffle(64,64,32)
-        self.up2 = upshuffle(64,64,16)
-        self.up3 = upshuffle(64,64,8)
-        self.up4 = upshuffle(64,64,4)
-        self.up5 = upshuffle(64,64,4)
-        self.up6 = upshuffle(64,64,1)
+        self.up1 = upshuffle(64,64,16)
+        self.up2 = upshuffle(64,64,8)
+        self.up3 = upshuffle(64,64,4)
+        self.up4 = upshuffle(64,64,2)
+        self.up5 = upshuffle(64,64,2)
+        # self.up6 = upshuffle(64,64,1)
         
         # Depth prediction
-        self.predict1 = smooth(384, 128)
+        self.predict1 = smooth(320, 128)
         self.predict2 = predict(128, 3)
 
         self.activation = nn.Sigmoid()
@@ -132,8 +132,9 @@ class NetworkModule(nn.Module):
         p2b = self.latlayer4(c1)
         p1 = self._upsample_add(p2, p2b)
         p1 = self.smooth4(p1)
-        p0 = self._upsample_add(p1, self.latlayer5(x))
-        p0 = self.smooth5(p0)
+        p1b = self.latlayer5(x)
+        # p0 = self._upsample_add(p1, p1b)
+        # p0 = self.smooth5(p0)
         
         # Top-down predict and refine
         d5b = self.agg1(p5)
@@ -146,13 +147,17 @@ class NetworkModule(nn.Module):
         d2 = self.up4(d2b)
         d1b = self.agg5(p1)
         d1 = self.up5(d1b)
-        d0 = self.agg6(p0)
+        # d0 = self.agg6(p0)
         
-        _,_,H,W = d2.size()
-        vol = torch.cat( [ F.interpolate(d, size=(H,W), align_corners=False, mode='bilinear') for d in [d5,d4,d3,d2,d1,d0] ], dim=1 )
+        # _,_,H,W = d2.size()
+        vol = torch.cat( [ F.interpolate(d, size=(H,W), align_corners=False, mode='bilinear') for d in [d5,d4,d3,d2,d1] ], dim=1 )
+
+        # d5, d4, d3, d2 = self.up1(self.agg1(p5)), self.up2(self.agg2(p4)), self.up3(self.agg3(p3)), self.agg4(p2)
+        # _,_,H,W = d2.size()
+        # vol = torch.cat( [ F.upsample(d, size=(H,W), mode='bilinear') for d in [d5,d4,d3,d2,d1] ], dim=1 )
         
         pred1 = self.predict1(vol)
-        # pred2 = F.interpolate(self.predict2(pred1), size=(H*4,W*4), align_corners=False, mode='bilinear')
+        # pred2 = F.interpolate(self.predict2(pred1), size=(H*2,W*2), align_corners=False, mode='bilinear')
         # def hard_swish(x):
         # return x * tf.nn.relu6(x + 3) / 6
         pred2 = self.predict2(pred1)

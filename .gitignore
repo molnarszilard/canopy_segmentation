@@ -5,3 +5,4 @@ __pycache__/*
 .vscode/*
 training_images/*
 dataset*
+saved_models/*
