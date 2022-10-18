@@ -156,21 +156,7 @@ if __name__ == '__main__':
             if step % args.disp_interval == 0:
                 print("[epoch %2d][iter %4d] loss: %.4f " \
                                 % (epoch, step, loss))
-                if args.save_images and step%100==0:
-                    if not os.path.exists(args.dir_images):
-                        os.makedirs(args.dir_images)
-                    # sample_mask = maskpred[0].cpu().detach().numpy()
-                    filename = args.dir_images+'trainingpred_'+str(epoch)+'_'+str(step)+'.png'
-                    filename = str(filename)
-                    # sample_mask = np.moveaxis(sample_mask,0,-1)
-                    # print(sample_mask.shape)
-                    threshold = maskpred.mean()
-                    tensorzero = torch.Tensor([0.]).cuda()
-                    tensorone = torch.Tensor([1.]).cuda()
-                    imgmasked = img.clone()
-                    imgmasked[maskpred>=threshold]=tensorzero
-                    save_image(imgmasked[0], filename)
-                    # cv2.imwrite(sample_mask, "sample.png")
+                
         if epoch%args.save_epoch==0 or epoch==args.max_epochs-1:
             if not os.path.exists(args.model_dir):
                         os.makedirs(args.model_dir)
@@ -196,7 +182,24 @@ if __name__ == '__main__':
                     maskgt = maskgt.cuda()            
                 maskpred = net(img)
                 loss_eval_iou = loss_iou(maskpred, maskgt)               
-                eval_loss += loss_eval_iou *args.loss_multiplier             
+                eval_loss += loss_eval_iou *args.loss_multiplier
+                if args.save_images and i%100==0:
+                    if not os.path.exists(args.dir_images):
+                        os.makedirs(args.dir_images)
+                    # sample_mask = maskpred[0].cpu().detach().numpy()
+                    numbere=f'{epoch:02d}'
+                    numberi=f'{i:05d}'
+                    filename = args.dir_images+'trainingpred_'+numbere+'_'+numberi+'.png'
+                    filename = str(filename)
+                    # sample_mask = np.moveaxis(sample_mask,0,-1)
+                    # print(sample_mask.shape)
+                    threshold = maskpred.mean()
+                    tensorzero = torch.Tensor([0.]).cuda()
+                    tensorone = torch.Tensor([1.]).cuda()
+                    imgmasked = img.clone()
+                    imgmasked[maskpred>=threshold]=tensorzero
+                    save_image(imgmasked[0], filename)
+                    # cv2.imwrite(sample_mask, "sample.png")           
                 
             eval_loss = eval_loss/len(eval_dataloader)
             # val_loss_arr.append(eval_loss)

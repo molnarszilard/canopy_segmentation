@@ -54,7 +54,23 @@ if __name__ == '__main__':
 
     print('evaluating...')
     with torch.no_grad():
-        if not args.input_folder.endswith('.png'):
+        if args.input_folder.endswith('.png') or args.input_folder.endswith('.png'):
+            img = cv2.imread(args.depth_folder).astype(np.float32)
+            img = cv2.resize(img,(640,480))
+            img = np.moveaxis(img,-1,0)/255
+            img = torch.from_numpy(img).float().unsqueeze(0)
+            img = img.cuda()
+            start = timeit.default_timer()
+            maskpred = net(img)
+            stop = timeit.default_timer()
+            threshold = maskpred.mean()
+            imgmasked = img.clone()
+            imgmasked[maskpred>=threshold]/=3
+            dirname, basename = os.path.split(args.input_folder)
+            save_path=args.pred_folder+basename[:-4]
+            save_image(imgmasked[0], save_path +"_pred"+'.png')
+            print('Predicting the image took ', stop-start)
+        else:
             dlist=os.listdir(args.input_folder)
             dlist.sort()
             time_sum = 0
@@ -81,20 +97,4 @@ if __name__ == '__main__':
                 else:
                     continue
             print('Predicting '+str(counter)+' images took ', time_sum/counter)  
-        else:
-            img = cv2.imread(args.depth_folder).astype(np.float32)
-            img = cv2.resize(img,(640,480))
-            img = np.moveaxis(img,-1,0)/255
-            img = torch.from_numpy(img).float().unsqueeze(0)
-            img = img.cuda()
-            start = timeit.default_timer()
-            maskpred = net(img)
-            stop = timeit.default_timer()
-            threshold = maskpred.mean()
-            imgmasked = img.clone()
-            imgmasked[maskpred>=threshold]/=3
-            dirname, basename = os.path.split(args.input_folder)
-            save_path=args.pred_folder+basename[:-4]
-            save_image(imgmasked[0], save_path +"_pred"+'.png')
-            print('Predicting the image took ', stop-start)
     
