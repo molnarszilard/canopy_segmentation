@@ -12,7 +12,7 @@ def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='Normal image estimation from ToF depth image')
+    parser = argparse.ArgumentParser(description='canopy segmentation on individual images')
     parser.add_argument('--cuda', dest='cuda', default=True, action='store_true', help='whether use CUDA')
     parser.add_argument('--input_folder', dest='input_folder', default='./dataset/input_images/aghi/', type=str, help='path to a single input image for evaluation')
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
@@ -54,8 +54,8 @@ if __name__ == '__main__':
 
     print('evaluating...')
     with torch.no_grad():
-        if args.input_folder.endswith('.png') or args.input_folder.endswith('.png'):
-            img = cv2.imread(args.depth_folder).astype(np.float32)
+        if args.input_folder.endswith('.png') or args.input_folder.endswith('.jpg'):
+            img = cv2.imread(args.input_folder).astype(np.float32)
             img = cv2.resize(img,(640,480))
             img = np.moveaxis(img,-1,0)/255
             img = torch.from_numpy(img).float().unsqueeze(0)
@@ -64,12 +64,15 @@ if __name__ == '__main__':
             maskpred = net(img)
             stop = timeit.default_timer()
             threshold = maskpred.mean()
-            imgmasked = img.clone()
-            imgmasked[maskpred>=threshold]/=3
+            tensorone = torch.Tensor([1.]).cuda()
+            tensorzero = torch.Tensor([0.]).cuda()
+            masknorm = maskpred.clone()
+            masknorm[maskpred<=threshold]=tensorone
+            masknorm[maskpred>threshold]=tensorzero
             dirname, basename = os.path.split(args.input_folder)
             save_path=args.pred_folder+basename[:-4]
-            save_image(imgmasked[0], save_path +"_pred"+'.png')
-            print('Predicting the image took ', stop-start)
+            save_image(masknorm[0], save_path +"_pred_own"+'.png')
+            print('Predicting the image took %f seconds'% (stop-start))
         else:
             dlist=os.listdir(args.input_folder)
             dlist.sort()
@@ -90,11 +93,14 @@ if __name__ == '__main__':
                     time_sum=time_sum+stop-start
                     counter=counter+1
                     threshold = maskpred.mean()
-                    imgmasked = img.clone()
-                    imgmasked[maskpred>=threshold]/=3
+                    tensorone = torch.Tensor([1.]).cuda()
+                    tensorzero = torch.Tensor([0.]).cuda()
+                    masknorm = maskpred.clone()
+                    masknorm[maskpred<=threshold]=tensorone
+                    masknorm[maskpred>threshold]=tensorzero
                     save_path=args.pred_folder+filename[:-4]
-                    save_image(imgmasked[0], save_path +"_pred"+'.png')
+                    save_image(masknorm[0], save_path +"_pred_own"+'.png')
                 else:
                     continue
-            print('Predicting '+str(counter)+' images took ', time_sum/counter)  
+            print('Predicting %d images took %f seconds, with the average of %f' % (counter,time_sum,time_sum/counter))  
     

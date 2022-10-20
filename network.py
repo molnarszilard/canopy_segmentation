@@ -81,7 +81,6 @@ class NetworkModule(nn.Module):
         self.up5 = upshuffle(64,64,2)
         # self.up6 = upshuffle(64,64,1)
         
-        # Depth prediction
         self.predict1 = smooth(320, 128)
         self.predict2 = predict(128, 3)
 

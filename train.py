@@ -197,7 +197,7 @@ if __name__ == '__main__':
                     tensorzero = torch.Tensor([0.]).cuda()
                     tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
-                    imgmasked[maskpred>=threshold]=tensorzero
+                    imgmasked[maskpred>=threshold]/=3
                     save_image(imgmasked[0], filename)
                     # cv2.imwrite(sample_mask, "sample.png")           
                 

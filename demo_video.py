@@ -13,7 +13,7 @@ def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='Normal image estimation from ToF depth image')
+    parser = argparse.ArgumentParser(description='canopy segmentation on video, creating another video')
     parser.add_argument('--cuda', dest='cuda', default=True, action='store_true', help='whether use CUDA')
     parser.add_argument('--input', dest='input', default='./dataset/input_images/flights/DJI_0607.mp4', type=str, help='path to a single input image for evaluation')
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
@@ -77,7 +77,7 @@ if __name__ == '__main__':
                 totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
                 print("total frames in video: "+str(totalFrames))
                 fps = cap.get(cv2.CAP_PROP_FPS)
-                video = cv2.VideoWriter(save_path+"_segmented.mp4", fourcc, int(fps), (640,480))
+                video = cv2.VideoWriter(save_path+"_segmented.mp4", fourcc, fps, (640,480))
                 currentFrame = 0
                 while currentFrame<totalFrames:
                     progress(currentFrame,totalFrames,"frames")

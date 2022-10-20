@@ -12,7 +12,7 @@ def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='Normal image estimation from ToF depth image')
+    parser = argparse.ArgumentParser(description='canopy segmentation, individual frames from video')
     parser.add_argument('--cuda', dest='cuda', default=True, action='store_true', help='whether use CUDA')
     parser.add_argument('--input', dest='input', default='./dataset/input_images/flights/DJI_0607.mp4', type=str, help='path to a single input image for evaluation')
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
