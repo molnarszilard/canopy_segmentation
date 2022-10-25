@@ -87,10 +87,11 @@ if __name__ == '__main__':
                     maskpred = net(img)
                     # stop = timeit.default_timer()
                     threshold = maskpred.mean()
-                    tensorzero = torch.Tensor([0.]).cuda()
-                    tensorone = torch.Tensor([1.]).cuda()
+                    # tensorzero = torch.Tensor([0.]).cuda()
+                    # tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
-                    imgmasked[maskpred>=threshold]/=3
+                    maskpred3=maskpred.repeat(1,3,1,1)
+                    imgmasked[maskpred3>=threshold]/=3
                     dirname, basename = os.path.split(args.input)
                     save_path=args.pred_folder+basename[:-4]
                     number=f'{currentFrame:05d}'

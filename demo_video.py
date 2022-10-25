@@ -135,10 +135,11 @@ if __name__ == '__main__':
                         img = img.cuda()
                         maskpred = net(img)
                         threshold = maskpred.mean()
-                        tensorzero = torch.Tensor([0.]).cuda()
-                        tensorone = torch.Tensor([1.]).cuda()
+                        # tensorzero = torch.Tensor([0.]).cuda()
+                        # tensorone = torch.Tensor([1.]).cuda()
                         imgmasked = img.clone()
-                        imgmasked[maskpred>=threshold]/=3
+                        maskpred3=maskpred.repeat(1,3,1,1)
+                        imgmasked[maskpred3>=threshold]/=3
                         outimage = imgmasked[0].cpu().detach().numpy()
                         outimage = np.moveaxis(outimage,0,-1)*255
                         video.write(outimage.astype(np.uint8))

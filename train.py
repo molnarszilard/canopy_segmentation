@@ -14,6 +14,17 @@ import argparse
 from dataloader import DataLoader
 from network import NetworkModule
 import numpy as np
+import sys
+
+def progress(count, total, epoch, suffix=''):
+    bar_len = 10
+    filled_len = int(round(bar_len * count / float(total)))
+
+    percents = round(100.0 * count / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+    sys.stdout.write('Epoch: %s, [%s] %s%s --- %s/%s %s\r' % (epoch,bar, percents, '%', str(total), str(count), suffix))
+    sys.stdout.flush()
 
 def parse_args():
     """
@@ -153,9 +164,10 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
             # info
-            if step % args.disp_interval == 0:
-                print("[epoch %2d][iter %4d] loss: %.4f " \
-                                % (epoch, step, loss))
+            progress(step,iters_per_epoch-1,epoch,str(loss.item()))
+            # if step % args.disp_interval == 0:
+                # print("[epoch %2d][iter %4d] loss: %.4f " \
+                #                 % (epoch, step, loss))
                 
         if epoch%args.save_epoch==0 or epoch==args.max_epochs-1:
             if not os.path.exists(args.model_dir):
@@ -164,6 +176,7 @@ if __name__ == '__main__':
             torch.save({'epoch': epoch+1, 'model': net.state_dict(), }, save_name)
 
             print('save model: {}'.format(save_name))
+        print("done training epoch %d"%(epoch))
         end = time.time()
         print('time elapsed: %fs' % (end - start))
 
@@ -174,7 +187,8 @@ if __name__ == '__main__':
             net.eval()
             eval_data_iter = iter(eval_dataloader)
             for i, data in enumerate(eval_data_iter):
-                print(i,'/',len(eval_data_iter)-1)
+                # print(i,'/',len(eval_data_iter)-1)
+                progress(i,len(eval_data_iter)-1,epoch," iters")
                 # data = eval_data_iter.next()  
                 img,maskgt=data
                 if args.cuda:
@@ -191,18 +205,17 @@ if __name__ == '__main__':
                     numberi=f'{i:05d}'
                     filename = args.dir_images+'trainingpred_'+numbere+'_'+numberi+'.png'
                     filename = str(filename)
-                    # sample_mask = np.moveaxis(sample_mask,0,-1)
-                    # print(sample_mask.shape)
                     threshold = maskpred.mean()
-                    tensorzero = torch.Tensor([0.]).cuda()
-                    tensorone = torch.Tensor([1.]).cuda()
+                    # tensorzero = torch.Tensor([0.]).cuda()
+                    # tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
-                    imgmasked[maskpred>=threshold]/=3
-                    save_image(imgmasked[0], filename)
-                    # cv2.imwrite(sample_mask, "sample.png")           
+                    maskpred3=maskpred.repeat(1,3,1,1)
+                    imgmasked[maskpred3>=threshold]/=3
+                    save_image(imgmasked[0], filename)           
                 
             eval_loss = eval_loss/len(eval_dataloader)
             # val_loss_arr.append(eval_loss)
+            print("eval done")
             print("[epoch %2d] loss: %.4f " \
                             % (epoch, torch.sqrt(eval_loss)))
             with open(os.path.join(args.model_dir, 'training_log_{}.txt'.format(args.session)), 'a') as f:

@@ -81,8 +81,8 @@ class NetworkModule(nn.Module):
         self.up5 = upshuffle(64,64,2)
         # self.up6 = upshuffle(64,64,1)
         
-        self.predict1 = smooth(320, 128)
-        self.predict2 = predict(128, 3)
+        self.predict1 = smooth(320, 64)
+        self.predict2 = predict(64, 1)
 
         self.activation = nn.Sigmoid()
         # self.activation = nn.Threshold(threshold=0.5, value=0.0)
