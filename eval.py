@@ -87,10 +87,20 @@ if __name__ == '__main__':
                     img = np.moveaxis(img,-1,0)/255
                     img = torch.from_numpy(img).float().unsqueeze(0)
                     img = img.cuda()
+                    if counter==0:
+                        start = timeit.default_timer()
+                        maskpred = net(img) #in order to remove the setup-time
+                        stop = timeit.default_timer()
+                        setuptime = stop-start
                     start = timeit.default_timer()
                     maskpred = net(img)
                     stop = timeit.default_timer()
-                    time_sum=time_sum+stop-start
+                    if counter==0:
+                        time_sum=stop-start
+                        wsetuptime=setuptime
+                    else:
+                        time_sum+=stop-start
+                        wsetuptime+=stop-start
                     counter=counter+1
                     threshold = maskpred.mean()
                     tensorone = torch.Tensor([1.]).cuda()
@@ -103,5 +113,5 @@ if __name__ == '__main__':
                     save_image(masknorm3[0], save_path +"_pred_own"+'.jpg')
                 else:
                     continue
-            print('Predicting %d images took %f seconds, with the average of %f' % (counter,time_sum,time_sum/counter))  
+            print('Predicting %d images took %f seconds, with the average of %f ( with setup time: %f, average: %f)' % (counter,time_sum,time_sum/counter,wsetuptime,wsetuptime/counter))  
     
