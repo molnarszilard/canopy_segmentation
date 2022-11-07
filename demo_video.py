@@ -94,7 +94,7 @@ if __name__ == '__main__':
                     maskpred = net(img)
                     threshold = maskpred.mean()
                     imgmasked = img.clone()
-                    imgmasked[maskpred>=threshold]/=3 
+                    imgmasked[maskpred<=threshold]/=3 
                     outimage = imgmasked[0].cpu().detach().numpy()
                     outimage = np.moveaxis(outimage,0,-1)*255
                     video.write(outimage.astype(np.uint8))
@@ -139,7 +139,7 @@ if __name__ == '__main__':
                         # tensorone = torch.Tensor([1.]).cuda()
                         imgmasked = img.clone()
                         maskpred3=maskpred.repeat(1,3,1,1)
-                        imgmasked[maskpred3>=threshold]/=3
+                        imgmasked[maskpred3<=threshold]/=3
                         outimage = imgmasked[0].cpu().detach().numpy()
                         outimage = np.moveaxis(outimage,0,-1)*255
                         video.write(outimage.astype(np.uint8))

@@ -91,7 +91,7 @@ if __name__ == '__main__':
                     # tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
                     maskpred3=maskpred.repeat(1,3,1,1)
-                    imgmasked[maskpred3>=threshold]/=3
+                    imgmasked[maskpred3<=threshold]/=3
                     dirname, basename = os.path.split(args.input)
                     save_path=args.pred_folder+basename[:-4]
                     number=f'{currentFrame:05d}'
@@ -133,7 +133,7 @@ if __name__ == '__main__':
                         tensorzero = torch.Tensor([0.]).cuda()
                         tensorone = torch.Tensor([1.]).cuda()
                         imgmasked = img.clone()
-                        imgmasked[maskpred>=threshold]/=3
+                        imgmasked[maskpred<=threshold]/=3
                         save_path=args.pred_folder+filename[:-4]
                         number=f'{currentFrame:05d}'
                         # save_image(imgmasked[0], save_path+"_f_"+number+"_pred"+'.png')

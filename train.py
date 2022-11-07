@@ -15,6 +15,7 @@ from dataloader import DataLoader
 from network import NetworkModule
 import numpy as np
 import sys
+from torchsummary import summary
 
 def progress(count, total, epoch, suffix=''):
     bar_len = 10
@@ -34,7 +35,7 @@ def parse_args():
     parser.add_argument('--bs', dest='bs', default=4, type=int, help='batch_size')
     parser.add_argument('--checkepoch', dest='checkepoch', default=9, type=int, help='checkepoch to load model')
     parser.add_argument('--cuda', dest='cuda', default=True, action='store_true', help='whether use CUDA')
-    parser.add_argument('--data_dir', dest='data_dir', default='./dataset/augmented/', type=str, help='dataset directory')
+    parser.add_argument('--data_dir', dest='data_dir', default='./dataset/', type=str, help='dataset directory')
     parser.add_argument('--dir_images', dest='dir_images', default='training_images/', type=str, help='directory where to save the training images')
     parser.add_argument('--disp_interval', dest='disp_interval', default=10, type=int, help='display interval')
     parser.add_argument('--epochs', dest='max_epochs', default=10, type=int, help='number of epochs to train')
@@ -69,7 +70,7 @@ class LossIoU(nn.Module):
         union_tensor = pred+gt-intersection_tensor
         union = torch.sum(union_tensor, dim = (0,1,2,3))
         loss = intersection/union
-        return loss
+        return 1-loss
 
 if __name__ == '__main__':
     args = parse_args()
@@ -139,7 +140,8 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
 
     loss_iou = LossIoU()
-
+    summary(net, (3, 480, 640),4)
+    # print(net)
     iters_per_epoch = int(train_size / args.bs)
     for epoch in range(args.start_epoch, args.max_epochs):
         # setting to train mode
@@ -210,7 +212,7 @@ if __name__ == '__main__':
                     # tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
                     maskpred3=maskpred.repeat(1,3,1,1)
-                    imgmasked[maskpred3>=threshold]/=3
+                    imgmasked[maskpred3<=threshold]/=3
                     save_image(imgmasked[0], filename)           
                 
             eval_loss = eval_loss/len(eval_dataloader)

@@ -67,8 +67,8 @@ if __name__ == '__main__':
             tensorone = torch.Tensor([1.]).cuda()
             tensorzero = torch.Tensor([0.]).cuda()
             masknorm = maskpred.clone()
-            masknorm[maskpred<=threshold]=tensorone
-            masknorm[maskpred>threshold]=tensorzero
+            masknorm[maskpred>=threshold]=tensorone
+            masknorm[maskpred<threshold]=tensorzero
             dirname, basename = os.path.split(args.input_folder)
             save_path=args.pred_folder+basename[:-4]
             save_image(masknorm[0], save_path +"_pred_own"+'.png')
@@ -96,8 +96,8 @@ if __name__ == '__main__':
                     tensorone = torch.Tensor([1.]).cuda()
                     tensorzero = torch.Tensor([0.]).cuda()
                     masknorm = maskpred.clone()
-                    masknorm[maskpred<=threshold]=tensorone
-                    masknorm[maskpred>threshold]=tensorzero
+                    masknorm[maskpred>=threshold]=tensorone
+                    masknorm[maskpred<threshold]=tensorzero
                     masknorm3=masknorm.repeat(1,3,1,1)
                     save_path=args.pred_folder+filename[:-4]
                     save_image(masknorm3[0], save_path +"_pred_own"+'.jpg')
