@@ -24,7 +24,7 @@ def progress(count, total, epoch, suffix=''):
     percents = round(100.0 * count / float(total), 1)
     bar = '=' * filled_len + '-' * (bar_len - filled_len)
 
-    sys.stdout.write('Epoch: %s, [%s] %s%s --- %s/%s %s\r' % (epoch,bar, percents, '%', str(total), str(count), suffix))
+    sys.stdout.write('Epoch: %s [%s] %s%s --- %s/%s %s\r' % (epoch,bar, percents, '%', str(total), str(count), suffix))
     sys.stdout.flush()
 
 def parse_args():
@@ -170,7 +170,9 @@ if __name__ == '__main__':
             # if step % args.disp_interval == 0:
                 # print("[epoch %2d][iter %4d] loss: %.4f " \
                 #                 % (epoch, step, loss))
-                
+        print("done training epoch %d"%(epoch))
+        end = time.time()
+        print('time elapsed: %fs' % (end - start))        
         if epoch%args.save_epoch==0 or epoch==args.max_epochs-1:
             if not os.path.exists(args.model_dir):
                         os.makedirs(args.model_dir)
@@ -178,10 +180,6 @@ if __name__ == '__main__':
             torch.save({'epoch': epoch+1, 'model': net.state_dict(), }, save_name)
 
             print('save model: {}'.format(save_name))
-        print("done training epoch %d"%(epoch))
-        end = time.time()
-        print('time elapsed: %fs' % (end - start))
-
         print('evaluating...')
         eval_loss = 0
         with torch.no_grad():
