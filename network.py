@@ -81,7 +81,7 @@ class NetworkModule(nn.Module):
         self.up5 = upshuffle(64,64,2)
         # self.up6 = upshuffle(64,64,1)
         
-        self.predict1 = smooth(320, 64)
+        self.predict1 = smooth(256, 64)
         self.predict2 = predict(64, 1)
 
         self.activation = nn.Sigmoid()
@@ -115,13 +115,14 @@ class NetworkModule(nn.Module):
         c2 = self.layer1(c1) 
         c3 = self.layer2(c2)
         c4 = self.layer3(c3)
-        c5 = self.layer4(c4)
+        # c5 = self.layer4(c4)
 
         # Top-down
-        p5 = self.toplayer(c5)
-        p5b = self.latlayer1(c4)
-        p4 = self._upsample_add(p5, p5b)
-        p4 = self.smooth1(p4)
+        # p5 = self.toplayer(c5)
+        # p5b = self.latlayer1(c4)
+        # p4 = self._upsample_add(p5, p5b)
+        # p4 = self.smooth1(p4)
+        p4 = self.latlayer1(c4)
         p4b = self.latlayer2(c3)
         p3 = self._upsample_add(p4, p4b)
         p3 = self.smooth2(p3)
@@ -136,8 +137,8 @@ class NetworkModule(nn.Module):
         # p0 = self.smooth5(p0)
         
         # Top-down predict and refine
-        d5b = self.agg1(p5)
-        d5 = self.up1(d5b)
+        # d5b = self.agg1(p5)
+        # d5 = self.up1(d5b)
         d4b = self.agg2(p4)
         d4 = self.up2(d4b)
         d3b = self.agg3(p3)
@@ -149,7 +150,7 @@ class NetworkModule(nn.Module):
         # d0 = self.agg6(p0)
         
         # _,_,H,W = d2.size()
-        vol = torch.cat( [ F.interpolate(d, size=(H,W), align_corners=False, mode='bilinear') for d in [d5,d4,d3,d2,d1] ], dim=1 )
+        vol = torch.cat( [ F.interpolate(d, size=(H,W), align_corners=False, mode='bilinear') for d in [d4,d3,d2,d1] ], dim=1 )
 
         # d5, d4, d3, d2 = self.up1(self.agg1(p5)), self.up2(self.agg2(p4)), self.up3(self.agg3(p3)), self.agg4(p2)
         # _,_,H,W = d2.size()
