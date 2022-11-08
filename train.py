@@ -34,7 +34,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Segmenting vine canopy')
     parser.add_argument('--bs', dest='bs', default=4, type=int, help='batch_size')
     parser.add_argument('--checkepoch', dest='checkepoch', default=9, type=int, help='checkepoch to load model')
-    parser.add_argument('--cuda', dest='cuda', default=True, action='store_true', help='whether use CUDA')
+    parser.add_argument('--cuda', dest='cuda', default=True, help='whether use CUDA')
     parser.add_argument('--data_dir', dest='data_dir', default='./dataset/', type=str, help='dataset directory')
     parser.add_argument('--dir_images', dest='dir_images', default='training_images/', type=str, help='directory where to save the training images')
     parser.add_argument('--disp_interval', dest='disp_interval', default=10, type=int, help='display interval')
@@ -206,8 +206,6 @@ if __name__ == '__main__':
                     filename = args.dir_images+'trainingpred_'+numbere+'_'+numberi+'.png'
                     filename = str(filename)
                     threshold = maskpred.mean()
-                    # tensorzero = torch.Tensor([0.]).cuda()
-                    # tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
                     maskpred3=maskpred.repeat(1,3,1,1)
                     imgmasked[maskpred3<=threshold]/=3

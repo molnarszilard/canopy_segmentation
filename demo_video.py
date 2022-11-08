@@ -1,11 +1,8 @@
 import argparse
-from pickletools import uint8
 import cv2
 import numpy as np
 import os
-import timeit
 import torch
-from torchvision.utils import save_image
 from network import NetworkModule
 import sys
 
@@ -90,11 +87,13 @@ if __name__ == '__main__':
                         break
                     img = np.moveaxis(img,-1,0)/255
                     img = torch.from_numpy(img).float().unsqueeze(0)
-                    img = img.cuda()
+                    if args.cuda:
+                        img = img.cuda()
                     maskpred = net(img)
                     threshold = maskpred.mean()
                     imgmasked = img.clone()
-                    imgmasked[maskpred<=threshold]/=3 
+                    maskpred3=maskpred.repeat(1,3,1,1)
+                    imgmasked[maskpred3<=threshold]/=3 
                     outimage = imgmasked[0].cpu().detach().numpy()
                     outimage = np.moveaxis(outimage,0,-1)*255
                     video.write(outimage.astype(np.uint8))
@@ -132,11 +131,10 @@ if __name__ == '__main__':
                             break
                         img = np.moveaxis(img,-1,0)/255
                         img = torch.from_numpy(img).float().unsqueeze(0)
-                        img = img.cuda()
+                        if args.cuda:
+                            img = img.cuda()
                         maskpred = net(img)
                         threshold = maskpred.mean()
-                        # tensorzero = torch.Tensor([0.]).cuda()
-                        # tensorone = torch.Tensor([1.]).cuda()
                         imgmasked = img.clone()
                         maskpred3=maskpred.repeat(1,3,1,1)
                         imgmasked[maskpred3<=threshold]/=3

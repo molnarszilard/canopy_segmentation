@@ -2,9 +2,7 @@ import argparse
 import cv2
 import numpy as np
 import os
-import timeit
 import torch
-from torchvision.utils import save_image
 from network import NetworkModule
 import sys
 
@@ -71,7 +69,6 @@ if __name__ == '__main__':
                 print("total frames in video: "+str(totalFrames))
                 currentFrame = 0
                 while currentFrame<totalFrames:
-                    # print("frame number: "+str(currentFrame))
                     progress(currentFrame,totalFrames,"frames")
                     cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                     ret, img = cap.read()
@@ -82,20 +79,16 @@ if __name__ == '__main__':
                         break
                     img = np.moveaxis(img,-1,0)/255
                     img = torch.from_numpy(img).float().unsqueeze(0)
-                    img = img.cuda()
-                    # start = timeit.default_timer()
+                    if args.cuda:
+                        img = img.cuda()
                     maskpred = net(img)
-                    # stop = timeit.default_timer()
                     threshold = maskpred.mean()
-                    # tensorzero = torch.Tensor([0.]).cuda()
-                    # tensorone = torch.Tensor([1.]).cuda()
                     imgmasked = img.clone()
                     maskpred3=maskpred.repeat(1,3,1,1)
                     imgmasked[maskpred3<=threshold]/=3
                     dirname, basename = os.path.split(args.input)
                     save_path=args.pred_folder+basename[:-4]
                     number=f'{currentFrame:05d}'
-                    # save_image(imgmasked[0], save_path+"_f_"+number+"_pred"+'.png')
                     outimage = imgmasked[0].cpu().detach().numpy()
                     outimage = np.moveaxis(outimage,0,-1)*255
                     cv2.imwrite(save_path+"_f_"+number+"_pred"+'.png', outimage)
@@ -114,7 +107,6 @@ if __name__ == '__main__':
                     print("total frames in video: "+str(totalFrames))
                     currentFrame = 0
                     while currentFrame<totalFrames:
-                        # print("frame number: "+str(currentFrame))
                         progress(currentFrame,totalFrames,"frames")
                         cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                         ret, img = cap.read()
@@ -125,18 +117,15 @@ if __name__ == '__main__':
                             break
                         img = np.moveaxis(img,-1,0)/255
                         img = torch.from_numpy(img).float().unsqueeze(0)
-                        img = img.cuda()
-                        # start = timeit.default_timer()
+                        if args.cuda:
+                            img = img.cuda()
                         maskpred = net(img)
-                        # stop = timeit.default_timer()
                         threshold = maskpred.mean()
-                        tensorzero = torch.Tensor([0.]).cuda()
-                        tensorone = torch.Tensor([1.]).cuda()
                         imgmasked = img.clone()
-                        imgmasked[maskpred<=threshold]/=3
+                        maskpred3=maskpred.repeat(1,3,1,1)
+                        imgmasked[maskpred3<=threshold]/=3
                         save_path=args.pred_folder+filename[:-4]
                         number=f'{currentFrame:05d}'
-                        # save_image(imgmasked[0], save_path+"_f_"+number+"_pred"+'.png')
                         outimage = imgmasked[0].cpu().detach().numpy()
                         outimage = np.moveaxis(outimage,0,-1)*255
                         cv2.imwrite(save_path+"_f_"+number+"_pred"+'.png', outimage)

@@ -13,7 +13,7 @@ def parse_args():
     Parse input arguments
     """
     parser = argparse.ArgumentParser(description='canopy segmentation on individual images')
-    parser.add_argument('--cuda', dest='cuda', default=True, action='store_true', help='whether use CUDA')
+    parser.add_argument('--cuda', dest='cuda', default=False, type=bool, help='whether use CUDA')
     parser.add_argument('--input_folder', dest='input_folder', default='./dataset/input_images/aghi/', type=str, help='path to a single input image for evaluation')
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
     parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model__1_9.pth', type=str, help='path to the model to use')
@@ -59,13 +59,18 @@ if __name__ == '__main__':
             img = cv2.resize(img,(640,480))
             img = np.moveaxis(img,-1,0)/255
             img = torch.from_numpy(img).float().unsqueeze(0)
-            img = img.cuda()
+            if args.cuda:
+                img = img.cuda()
             start = timeit.default_timer()
             maskpred = net(img)
             stop = timeit.default_timer()
             threshold = maskpred.mean()
-            tensorone = torch.Tensor([1.]).cuda()
-            tensorzero = torch.Tensor([0.]).cuda()
+            if args.cuda:
+                tensorone = torch.Tensor([1.]).cuda()
+                tensorzero = torch.Tensor([0.]).cuda()
+            else:
+                tensorone = torch.Tensor([1.])
+                tensorzero = torch.Tensor([0.])
             masknorm = maskpred.clone()
             masknorm[maskpred>=threshold]=tensorone
             masknorm[maskpred<threshold]=tensorzero
@@ -86,7 +91,8 @@ if __name__ == '__main__':
                     img = cv2.resize(img,(640,480))
                     img = np.moveaxis(img,-1,0)/255
                     img = torch.from_numpy(img).float().unsqueeze(0)
-                    img = img.cuda()
+                    if args.cuda:
+                        img = img.cuda()
                     if counter==0:
                         start = timeit.default_timer()
                         maskpred = net(img) #in order to remove the setup-time
@@ -103,8 +109,12 @@ if __name__ == '__main__':
                         wsetuptime+=stop-start
                     counter=counter+1
                     threshold = maskpred.mean()
-                    tensorone = torch.Tensor([1.]).cuda()
-                    tensorzero = torch.Tensor([0.]).cuda()
+                    if args.cuda:
+                        tensorone = torch.Tensor([1.]).cuda()
+                        tensorzero = torch.Tensor([0.]).cuda()
+                    else:
+                        tensorone = torch.Tensor([1.])
+                        tensorzero = torch.Tensor([0.])
                     masknorm = maskpred.clone()
                     masknorm[maskpred>=threshold]=tensorone
                     masknorm[maskpred<threshold]=tensorzero
