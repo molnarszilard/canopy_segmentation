@@ -13,10 +13,11 @@ def parse_args():
     Parse input arguments
     """
     parser = argparse.ArgumentParser(description='canopy segmentation on individual images')
-    parser.add_argument('--cuda', dest='cuda', default=False, type=bool, help='whether use CUDA')
+    parser.add_argument('--cuda', dest='cuda', default=True, type=bool, help='whether use CUDA')
     parser.add_argument('--input_folder', dest='input_folder', default='./dataset/input_images/aghi/', type=str, help='path to a single input image for evaluation')
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
     parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model__1_9.pth', type=str, help='path to the model to use')
+    parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
 
     args = parser.parse_args()
     return args
@@ -30,10 +31,12 @@ if __name__ == '__main__':
         print("The new directory for saving images while training is created!")
     if torch.cuda.is_available() and not args.cuda:
         print("WARNING: CUDA device is available. You might want to run the program with --cuda=True")
-    
+    if args.model_size not in ['small','medium','large']:
+        print("WARNING. Model size of <%s> is not a valid unit. Accepted units are: small, medium, large. Defaulting to medium."%(args.model_size))
+        args.model_size = 'medium'
     # network initialization
     print('Initializing model...')
-    net = NetworkModule(fixed_feature_weights=False)
+    net = NetworkModule(fixed_feature_weights=False,size=args.model_size)
     if args.cuda:
         net = net.cuda()
     print("Model initialization done.")  

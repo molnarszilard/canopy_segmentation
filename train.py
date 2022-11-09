@@ -1,10 +1,3 @@
-'''
-Vineyard canopy segmentation based on
-https://github.com/MrD1360/deep_segmentation_vineyards_navigation/blob/main/Model_training_and_validation.ipynb
-modifyed into pytorch with FPN (based on ToFNest)
-'''
-
-import cv2
 import os
 import torch
 from torchvision.utils import save_image
@@ -44,6 +37,7 @@ def parse_args():
     parser.add_argument('--lr_decay_step', dest='lr_decay_step', default=5, type=int, help='step to do learning rate decay, unit is epoch')
     parser.add_argument('--lr', dest='lr', default=1e-3, type=float, help='starting learning rate')
     parser.add_argument('--model_dir', dest='model_dir', default='saved_models', type=str, help='output directory')
+    parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
     parser.add_argument('--num_workers', dest='num_workers', default=1, type=int, help='num_workers')
     parser.add_argument('--o', dest='optimizer', default="adam", type=str, help='training optimizer')
     parser.add_argument('--r', dest='resume', default=False, type=bool, help='resume checkpoint or not')
@@ -82,6 +76,9 @@ if __name__ == '__main__':
     if torch.cuda.is_available() and not args.cuda:
         print("WARNING: CUDA device is available. You might want to run the program with --cuda=True")
 
+    if args.model_size not in ['small','medium','large']:
+        print("WARNING. Model size of <%s> is not a valid unit. Accepted units are: small, medium, large. Defaulting to medium."%(args.model_size))
+        args.model_size = 'medium'
     train_dataset = DataLoader(root=args.data_dir,train=True)
     train_size = len(train_dataset)
     eval_dataset = DataLoader(root=args.data_dir,train=False)
@@ -95,7 +92,7 @@ if __name__ == '__main__':
 
     # network initialization
     print('Initializing model...')
-    net = NetworkModule(fixed_feature_weights=False)
+    net = NetworkModule(fixed_feature_weights=False,size=args.model_size)
     if args.cuda:
         net = net.cuda()
     print("Model initialization done.")
@@ -133,6 +130,8 @@ if __name__ == '__main__':
         checkpoint = {k: v for k, v in checkpoint['model'].items() if k in state}
         state.update(checkpoint)
         net.load_state_dict(state)
+        if args.model_size not in [net.get_size()]:
+            print("WARNING. Model size of <%s> is not equal to the size in the saved model. The correct model size for this is: %s"%(args.model_size,net.get_size()))
         if 'pooling_mode' in checkpoint.keys():
             POOLING_MODE = checkpoint['pooling_mode']
         print("loaded checkpoint %s" % (load_name))
