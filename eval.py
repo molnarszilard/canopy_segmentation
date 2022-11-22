@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
     parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model__1_9.pth', type=str, help='path to the model to use')
     parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
+    parser.add_argument('--save_type', dest='save_type', default="mask", type=str, help='do you want to save the masked image, the mask, or both: splash, mask, both')
 
     args = parser.parse_args()
     return args
@@ -78,9 +79,18 @@ if __name__ == '__main__':
             masknorm[maskpred>=threshold]=tensorone
             masknorm[maskpred<threshold]=tensorzero
             dirname, basename = os.path.split(args.input_folder)
-            save_path=args.pred_folder+basename[:-4]
-            save_image(masknorm[0], save_path +"_pred_own"+'.png')
-            print('Predicting the image took %f seconds'% (stop-start))
+            if args.save_type in ['splash','both']:
+                imgmasked = img.clone()
+                masknorm3=masknorm.repeat(1,3,1,1)
+                imgmasked[masknorm3<threshold]/=3
+                save_path=args.pred_folder+basename[:-4]
+                outimage = imgmasked[0].cpu().detach().numpy()
+                outimage = np.moveaxis(outimage,0,-1)*255
+                cv2.imwrite(save_path+'_pred_masked.jpg', outimage)
+            if args.save_type in ['mask','both']:                
+                save_path=args.pred_folder+basename[:-4]
+                save_image(masknorm[0], save_path +'_pred.jpg')
+            print('Predicting the image took %f seconds (with setup time)'% (stop-start))
         else:
             dlist=os.listdir(args.input_folder)
             dlist.sort()
@@ -121,9 +131,16 @@ if __name__ == '__main__':
                     masknorm = maskpred.clone()
                     masknorm[maskpred>=threshold]=tensorone
                     masknorm[maskpred<threshold]=tensorzero
-                    masknorm3=masknorm.repeat(1,3,1,1)
                     save_path=args.pred_folder+filename[:-4]
-                    save_image(masknorm3[0], save_path +"_pred_own"+'.jpg')
+                    if args.save_type in ['splash','both']:
+                        imgmasked = img.clone()
+                        masknorm3=masknorm.repeat(1,3,1,1)
+                        imgmasked[masknorm3<threshold]/=3
+                        outimage = imgmasked[0].cpu().detach().numpy()
+                        outimage = np.moveaxis(outimage,0,-1)*255
+                        cv2.imwrite(save_path+'_pred_masked.jpg', outimage)
+                    if args.save_type in ['mask','both']:         
+                        save_image(masknorm[0], save_path +'_pred.jpg')
                 else:
                     continue
             print('Predicting %d images took %f seconds, with the average of %f ( with setup time: %f, average: %f)' % (counter,time_sum,time_sum/counter,wsetuptime,wsetuptime/counter))  
