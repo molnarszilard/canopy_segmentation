@@ -67,43 +67,54 @@ if __name__ == '__main__':
     print('evaluating...')
     with torch.no_grad():
         if args.input.endswith('.mp4'):
-                print("processing: "+args.input)
-                cap = cv2.VideoCapture(args.input)
-                totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                print("total frames in video: "+str(totalFrames))
-                currentFrame = 0
-                while currentFrame<totalFrames:
-                    progress(currentFrame,totalFrames,"frames")
-                    cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
-                    ret, img = cap.read()
-                    try:
-                            img = cv2.resize(img,(640,480))
-                    except:
-                        print("Something went wrong processing resize.")
-                        break
-                    img = np.moveaxis(img,-1,0)/255
-                    img = torch.from_numpy(img).float().unsqueeze(0)
-                    if args.cuda:
-                        img = img.cuda()
-                    maskpred = net(img)
-                    threshold = maskpred.mean()
-                    imgmasked = img.clone()
-                    maskpred3=maskpred.repeat(1,3,1,1)
-                    imgmasked[maskpred3<=threshold]/=3
-                    dirname, basename = os.path.split(args.input)
-                    save_path=args.pred_folder+basename[:-4]
-                    number=f'{currentFrame:05d}'
-                    outimage = imgmasked[0].cpu().detach().numpy()
-                    outimage = np.moveaxis(outimage,0,-1)*255
-                    cv2.imwrite(save_path+"_f_"+number+"_pred"+'.png', outimage)
-                    currentFrame = currentFrame + myFrameNumber
-                cap.release()
-                print("done")
+            if not os.path.exists(args.input):
+                print("The file: "+args.input+" does not exists.")
+                exit()
+            print("processing: "+args.input)
+            cap = cv2.VideoCapture(args.input)
+            totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            print("total frames in video: "+str(totalFrames))
+            currentFrame = 0
+            while currentFrame<totalFrames:
+                progress(currentFrame,totalFrames,"frames")
+                cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
+                ret, img = cap.read()
+                try:
+                        img = cv2.resize(img,(640,480))
+                except:
+                    print("Something went wrong processing resize.")
+                    break
+                img = np.moveaxis(img,-1,0)/255
+                img = torch.from_numpy(img).float().unsqueeze(0)
+                if args.cuda:
+                    img = img.cuda()
+                maskpred = net(img)
+                threshold = maskpred.mean()
+                imgmasked = img.clone()
+                maskpred3=maskpred.repeat(1,3,1,1)
+                imgmasked[maskpred3<=threshold]/=3
+                dirname, basename = os.path.split(args.input)
+                save_path=args.pred_folder+basename[:-4]
+                number=f'{currentFrame:05d}'
+                outimage = imgmasked[0].cpu().detach().numpy()
+                outimage = np.moveaxis(outimage,0,-1)*255
+                cv2.imwrite(save_path+"_f_"+number+"_pred"+'.png', outimage)
+                currentFrame = currentFrame + myFrameNumber
+            cap.release()
+            print("done")
         else:
+            if os.path.isfile(args.input):
+                print("The specified file: "+args.input+" is not an mp4 video, nor a folder containing mp4 videos. If you want to evaluate images, use eval.py. If your videos are in different format than mp4, convert them or rewrite the code.")
+                exit()
+            if not os.path.exists(args.input):
+                print("The folder: "+args.input+" does not exists.")
+                exit()
             dlist=os.listdir(args.input)
             dlist.sort()
+            counter = 0
             for filename in dlist:
                 if filename.endswith(".mp4"):
+                    counter=counter+1
                     print("processing: "+args.input+filename)
                     cap = cv2.VideoCapture(args.input+filename)
                     totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -135,3 +146,5 @@ if __name__ == '__main__':
                         currentFrame = currentFrame + myFrameNumber
                     cap.release()
                     print("done")
+            if counter<1:
+                print("The specified folder: "+args.input+" does not contain videos.")

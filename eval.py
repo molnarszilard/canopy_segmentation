@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument('--cuda', dest='cuda', default=True, type=bool, help='whether use CUDA')
     parser.add_argument('--input_folder', dest='input_folder', default='./dataset/input_images/aghi/', type=str, help='path to a single input image for evaluation')
     parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
-    parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model__1_9.pth', type=str, help='path to the model to use')
+    parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model_1_9.pth', type=str, help='path to the model to use')
     parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
     parser.add_argument('--save_type', dest='save_type', default="mask", type=str, help='do you want to save the masked image, the mask, or both: splash, mask, both')
 
@@ -59,6 +59,9 @@ if __name__ == '__main__':
     print('evaluating...')
     with torch.no_grad():
         if args.input_folder.endswith('.png') or args.input_folder.endswith('.jpg'):
+            if not os.path.exists(args.input_folder):
+                print("The file: "+args.input_folder+" does not exists.")
+                exit()
             img = cv2.imread(args.input_folder).astype(np.float32)
             img = cv2.resize(img,(640,480))
             img = np.moveaxis(img,-1,0)/255
@@ -92,6 +95,12 @@ if __name__ == '__main__':
                 save_image(masknorm[0], save_path +'_pred.jpg')
             print('Predicting the image took %f seconds (with setup time)'% (stop-start))
         else:
+            if os.path.isfile(args.input):
+                print("The specified file: "+args.input+" is not an jpg or png image, nor a folder containing jpg or png images. If you want to evaluate videos, use eval_video.py or demo_video.py.")
+                exit()
+            if not os.path.exists(args.input_folder):
+                print("The folder: "+args.input_folder+" does not exists.")
+                exit()
             dlist=os.listdir(args.input_folder)
             dlist.sort()
             time_sum = 0
@@ -144,4 +153,6 @@ if __name__ == '__main__':
                 else:
                     continue
             print('Predicting %d images took %f seconds, with the average of %f ( with setup time: %f, average: %f)' % (counter,time_sum,time_sum/counter,wsetuptime,wsetuptime/counter))  
+            if counter<1:
+                print("The specified folder: "+args.input_folder+" does not contain images.")
     
