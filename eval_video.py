@@ -17,6 +17,8 @@ def parse_args():
     parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model_1_9.pth', type=str, help='path to the model to use')
     parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
     parser.add_argument('--frames', dest='frames', default=1, type=int, help='process every Xth frame from the video')
+    parser.add_argument('--dim', dest='dim', default=False, type=bool, help='dim the pixels that are not segmented, or leave them black?')
+    parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab')
 
     args = parser.parse_args()
     return args
@@ -64,6 +66,12 @@ if __name__ == '__main__':
     torch.cuda.empty_cache()
     net.eval()
     myFrameNumber = args.frames
+    if args.cuda:
+        tensorone = torch.Tensor([1.]).cuda()
+        tensorzero = torch.Tensor([0.]).cuda()
+    else:
+        tensorone = torch.Tensor([1.])
+        tensorzero = torch.Tensor([0.])
     print('evaluating...')
     with torch.no_grad():
         if args.input.endswith('.mp4'):
@@ -75,29 +83,45 @@ if __name__ == '__main__':
             totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
             print("total frames in video: "+str(totalFrames))
             currentFrame = 0
-            while currentFrame<totalFrames:
+            while currentFrame<totalFrames-1:
                 progress(currentFrame,totalFrames,"frames")
                 cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                 ret, img = cap.read()
+                imgmasked = img.copy()
+                if args.cs=="lab":
+                    try:
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                    except:
+                        print("Something went wrong processing bgr2lab conversion.")
+                        break
                 try:
                         img = cv2.resize(img,(640,480))
+                        imgmasked = cv2.resize(imgmasked,(args.width,args.height))
                 except:
                     print("Something went wrong processing resize.")
                     break
-                img = np.moveaxis(img,-1,0)/255
+                img = np.moveaxis(img,-1,0)
+                imgmasked = np.moveaxis(imgmasked,-1,0)
                 img = torch.from_numpy(img).float().unsqueeze(0)
+                imgmasked = torch.from_numpy(imgmasked).float().unsqueeze(0)
+                if args.cs=="rgb":
+                    img/=255
                 if args.cuda:
                     img = img.cuda()
+                    imgmasked = imgmasked.cuda()
                 maskpred = net(img)
                 threshold = maskpred.mean()
                 imgmasked = img.clone()
                 maskpred3=maskpred.repeat(1,3,1,1)
-                imgmasked[maskpred3<=threshold]/=3
+                if args.dim:
+                    imgmasked[maskpred3<threshold]/=3
+                else:
+                    imgmasked[maskpred3<threshold]=tensorzero
                 dirname, basename = os.path.split(args.input)
                 save_path=args.pred_folder+basename[:-4]
                 number=f'{currentFrame:05d}'
                 outimage = imgmasked[0].cpu().detach().numpy()
-                outimage = np.moveaxis(outimage,0,-1)*255
+                outimage = np.moveaxis(outimage,0,-1)
                 cv2.imwrite(save_path+"_f_"+number+"_pred"+'.png', outimage)
                 currentFrame = currentFrame + myFrameNumber
             cap.release()
@@ -120,28 +144,44 @@ if __name__ == '__main__':
                     totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
                     print("total frames in video: "+str(totalFrames))
                     currentFrame = 0
-                    while currentFrame<totalFrames:
+                    while currentFrame<totalFrames-1:
                         progress(currentFrame,totalFrames,"frames")
                         cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                         ret, img = cap.read()
+                        imgmasked = img.copy()
+                        if args.cs=="lab":
+                            try:
+                                img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                            except:
+                                print("Something went wrong processing bgr2lab conversion.")
+                                break
                         try:
                             img = cv2.resize(img,(640,480))
+                            imgmasked = cv2.resize(imgmasked,(args.width,args.height))
                         except:
                             print("Something went wrong processing resize.")
                             break
-                        img = np.moveaxis(img,-1,0)/255
+                        img = np.moveaxis(img,-1,0)
+                        imgmasked = np.moveaxis(imgmasked,-1,0)
                         img = torch.from_numpy(img).float().unsqueeze(0)
+                        imgmasked = torch.from_numpy(imgmasked).float().unsqueeze(0)
+                        if args.cs=="rgb":
+                            img/=255
                         if args.cuda:
                             img = img.cuda()
+                            imgmasked = imgmasked.cuda()
                         maskpred = net(img)
                         threshold = maskpred.mean()
                         imgmasked = img.clone()
                         maskpred3=maskpred.repeat(1,3,1,1)
-                        imgmasked[maskpred3<=threshold]/=3
+                        if args.dim:
+                            imgmasked[maskpred3<threshold]/=3
+                        else:
+                            imgmasked[maskpred3<threshold]=tensorzero
                         save_path=args.pred_folder+filename[:-4]
                         number=f'{currentFrame:05d}'
                         outimage = imgmasked[0].cpu().detach().numpy()
-                        outimage = np.moveaxis(outimage,0,-1)*255
+                        outimage = np.moveaxis(outimage,0,-1)
                         cv2.imwrite(save_path+"_f_"+number+"_pred"+'.png', outimage)
                         currentFrame = currentFrame + myFrameNumber
                     cap.release()

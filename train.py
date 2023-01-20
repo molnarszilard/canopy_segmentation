@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument('--save_epoch', dest='save_epoch', default=5, type=int, help='after how many epochs do you want the model to be saved')
     parser.add_argument('--save_images', dest='save_images', default=100, type=int, help='save every x-th image during the training to see its evolution, 0 - means off')
     parser.add_argument('--start_at', dest='start_epoch', default=0, type=int, help='epoch to start with')
+    parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab')
     
     args = parser.parse_args()
     return args
@@ -79,9 +80,9 @@ if __name__ == '__main__':
     if args.model_size not in ['small','medium','large']:
         print("WARNING. Model size of <%s> is not a valid unit. Accepted units are: small, medium, large. Defaulting to medium."%(args.model_size))
         args.model_size = 'medium'
-    train_dataset = DataLoader(root=args.data_dir,train=True)
+    train_dataset = DataLoader(root=args.data_dir,train=True,cs=args.cs)
     train_size = len(train_dataset)
-    eval_dataset = DataLoader(root=args.data_dir,train=False)
+    eval_dataset = DataLoader(root=args.data_dir,train=False,cs=args.cs)
     eval_size = len(eval_dataset)
     print(train_size)
 

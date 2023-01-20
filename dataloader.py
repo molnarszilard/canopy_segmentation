@@ -6,8 +6,9 @@ import numpy as np
 
 class DataLoader(data.Dataset):
     
-    def __init__(self, root='./dataset', train=True):
+    def __init__(self, root='./dataset', train=True,cs="rgb"):
         self.root = Path(root)
+        self.cs=cs
         if train:
             self.image_input_paths = [root+'/images/train/'+d for d in os.listdir(root+'/images/train') if d.endswith("jpg") or d.endswith("png")]
         else:
@@ -17,7 +18,11 @@ class DataLoader(data.Dataset):
     def __getitem__(self, index):
         path = self.image_input_paths[index]
         # print(path)
-        image_input = cv2.imread(path).astype(np.float32)
+        if self.cs=="rgb":
+            image_input = cv2.imread(path).astype(np.float32)
+        else:
+            image_input = cv2.imread(path)
+            image_input = cv2.cvtColor(image_input, cv2.COLOR_BGR2LAB).astype(np.float32)
         image_input = cv2.resize(image_input,(640,480))
         image_input = np.moveaxis(image_input,-1,0)
         maskgt = cv2.imread(path.replace('images', 'masks')).astype(np.float32)
@@ -26,7 +31,7 @@ class DataLoader(data.Dataset):
         maskgt = np.expand_dims(maskgt,axis=-1)
         maskgt = np.moveaxis(maskgt,-1,0)
         # print(maskgt.shape)
-        return image_input/255, maskgt/255
+        return image_input, maskgt/255
 
     def __len__(self):
         return self.length

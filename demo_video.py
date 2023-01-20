@@ -18,6 +18,10 @@ def parse_args():
     parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
     parser.add_argument('--one_vid', dest='one_vid', default=True, type=bool, help='if you are processing multiple videos from a folder, do you want to create separate or only one video?')
     parser.add_argument('--frames', dest='frames', default=1, type=int, help='process every Xth frame from the video')
+    parser.add_argument('--height', dest='height', default=480, type=int, help='height of the output video')
+    parser.add_argument('--width', dest='width', default=640, type=int, help='width of the output video')
+    parser.add_argument('--dim', dest='dim', default=False, type=bool, help='dim the pixels that are not segmented, or leave them black?')
+    parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab')
 
     args = parser.parse_args()
     return args
@@ -68,6 +72,12 @@ if __name__ == '__main__':
     img_array = []
     fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
     myFrameNumber = args.frames
+    if args.cuda:
+        tensorone = torch.Tensor([1.]).cuda()
+        tensorzero = torch.Tensor([0.]).cuda()
+    else:
+        tensorone = torch.Tensor([1.])
+        tensorzero = torch.Tensor([0.])
     with torch.no_grad():
         if args.input.endswith('.mp4'):
             if not os.path.exists(args.input):
@@ -80,28 +90,49 @@ if __name__ == '__main__':
             totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
             print("total frames in video: "+str(totalFrames))
             fps = cap.get(cv2.CAP_PROP_FPS)
-            video = cv2.VideoWriter(save_path+"_segmented.mp4", fourcc, fps, (640,480))
+            video = cv2.VideoWriter(save_path+"_segmented.mp4", fourcc, fps, (args.width,args.height))
             currentFrame = 0
-            while currentFrame<totalFrames:
+            while currentFrame<totalFrames-1:
                 progress(currentFrame,totalFrames,"frames")
                 cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                 ret, img = cap.read()
+                imgmasked = img.copy()
+                if args.cs=="lab":
+                    try:
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                    except:
+                        print("Something went wrong processing bgr2lab conversion.")
+                        break
                 try:
-                        img = cv2.resize(img,(640,480))
+                    img = cv2.resize(img,(args.width,args.height))
+                    imgmasked = cv2.resize(imgmasked,(args.width,args.height))
                 except:
                     print("Something went wrong processing resize.")
                     break
-                img = np.moveaxis(img,-1,0)/255
+                img = np.moveaxis(img,-1,0)
+                imgmasked = np.moveaxis(imgmasked,-1,0)
                 img = torch.from_numpy(img).float().unsqueeze(0)
+                imgmasked = torch.from_numpy(imgmasked).float().unsqueeze(0)
+                if args.cs=="rgb":
+                    img/=255
                 if args.cuda:
                     img = img.cuda()
+                    imgmasked = imgmasked.cuda()
                 maskpred = net(img)
                 threshold = maskpred.mean()
-                imgmasked = img.clone()
+                # imgmasked = img.clone()
                 maskpred3=maskpred.repeat(1,3,1,1)
-                imgmasked[maskpred3<=threshold]/=3 
+                if args.dim:
+                    imgmasked[maskpred3<threshold]/=3
+                else:
+                    imgmasked[maskpred3<threshold]=tensorzero 
                 outimage = imgmasked[0].cpu().detach().numpy()
-                outimage = np.moveaxis(outimage,0,-1)*255
+                outimage = np.moveaxis(outimage,0,-1)
+                # try:
+                #         outimage = cv2.cvtColor(outimage, cv2.COLOR_LAB2RGB)*255
+                # except:
+                #     print("Something went wrong processing lab2bgr conversion.")
+                #     break
                 video.write(outimage.astype(np.uint8))
                 currentFrame = currentFrame + myFrameNumber
             cap.release()
@@ -132,28 +163,48 @@ if __name__ == '__main__':
                         save_path=args.pred_folder+filename[:-4]+"_segmented.mp4"
                     if video == None or not args.one_vid:
                         fps = cap.get(cv2.CAP_PROP_FPS)
-                        video = cv2.VideoWriter(save_path, fourcc, int(fps), (640,480))
+                        video = cv2.VideoWriter(save_path, fourcc, int(fps), (args.width,args.height))
                     currentFrame = 0
-                    while currentFrame<totalFrames:
+                    while currentFrame<totalFrames-1:
                         progress(currentFrame,totalFrames,"frames")
                         cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                         ret, img = cap.read()
+                        imgmasked = img.copy()
+                        if args.cs=="lab":
+                            try:
+                                img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                            except:
+                                print("Something went wrong processing bgr2lab conversion.")
+                                break
                         try:
-                            img = cv2.resize(img,(640,480))
+                            img = cv2.resize(img,(args.width,args.height))
+                            imgmasked = cv2.resize(imgmasked,(args.width,args.height))
                         except:
                             print("Something went wrong processing resize.")
                             break
-                        img = np.moveaxis(img,-1,0)/255
+                        img = np.moveaxis(img,-1,0)
                         img = torch.from_numpy(img).float().unsqueeze(0)
+                        imgmasked = np.moveaxis(imgmasked,-1,0)
+                        imgmasked = torch.from_numpy(imgmasked).float().unsqueeze(0)
+                        if args.cs=="rgb":
+                            img/=255
                         if args.cuda:
                             img = img.cuda()
+                            imgmasked = imgmasked.cuda()
                         maskpred = net(img)
                         threshold = maskpred.mean()
-                        imgmasked = img.clone()
                         maskpred3=maskpred.repeat(1,3,1,1)
-                        imgmasked[maskpred3<=threshold]/=3
+                        if args.dim:
+                            imgmasked[maskpred3<threshold]/=3
+                        else:
+                            imgmasked[maskpred3<threshold]=tensorzero
                         outimage = imgmasked[0].cpu().detach().numpy()
-                        outimage = np.moveaxis(outimage,0,-1)*255
+                        outimage = np.moveaxis(outimage,0,-1)
+                        try:
+                            outimage = cv2.cvtColor(outimage, cv2.COLOR_LAB2RGB)
+                        except:
+                            print("Something went wrong processing lab2bgr conversion.")
+                            break
                         video.write(outimage.astype(np.uint8))
                         currentFrame = currentFrame + myFrameNumber
                     cap.release()

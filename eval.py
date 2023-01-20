@@ -19,7 +19,8 @@ def parse_args():
     parser.add_argument('--model_path', dest='model_path', default='saved_models/saved_model_1_9.pth', type=str, help='path to the model to use')
     parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
     parser.add_argument('--save_type', dest='save_type', default="mask", type=str, help='do you want to save the masked image, the mask, or both: splash, mask, both')
-
+    parser.add_argument('--dim', dest='dim', default=False, type=bool, help='dim the pixels that are not segmented, or leave them black?')
+    parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab')
     args = parser.parse_args()
     return args
 
@@ -55,37 +56,51 @@ if __name__ == '__main__':
     del checkpoint
     torch.cuda.empty_cache()
     net.eval()
-
+    if args.cuda:
+        tensorone = torch.Tensor([1.]).cuda()
+        tensorzero = torch.Tensor([0.]).cuda()
+    else:
+        tensorone = torch.Tensor([1.])
+        tensorzero = torch.Tensor([0.])
     print('evaluating...')
     with torch.no_grad():
         if args.input_folder.endswith('.png') or args.input_folder.endswith('.jpg'):
             if not os.path.exists(args.input_folder):
                 print("The file: "+args.input_folder+" does not exists.")
                 exit()
-            img = cv2.imread(args.input_folder).astype(np.float32)
+            img = cv2.imread(args.input_folder)
+            if args.cs=="lab":
+                if args.save_type in ['splash','both']:
+                    imgmasked = img.copy()
+                    imgmasked = cv2.resize(imgmasked,(args.width,args.height))
+                    imgmasked = np.moveaxis(imgmasked,-1,0)
+                    imgmasked = torch.from_numpy(imgmasked).float().unsqueeze(0)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             img = cv2.resize(img,(640,480))
-            img = np.moveaxis(img,-1,0)/255
+            img = np.moveaxis(img,-1,0)
             img = torch.from_numpy(img).float().unsqueeze(0)
+            if args.cs=="rgb":
+                img/=255
             if args.cuda:
+                if args.save_type in ['splash','both'] and args.cs=="lab":
+                    imgmasked = imgmasked.cuda()
                 img = img.cuda()
             start = timeit.default_timer()
             maskpred = net(img)
             stop = timeit.default_timer()
             threshold = maskpred.mean()
-            if args.cuda:
-                tensorone = torch.Tensor([1.]).cuda()
-                tensorzero = torch.Tensor([0.]).cuda()
-            else:
-                tensorone = torch.Tensor([1.])
-                tensorzero = torch.Tensor([0.])
             masknorm = maskpred.clone()
             masknorm[maskpred>=threshold]=tensorone
             masknorm[maskpred<threshold]=tensorzero
             dirname, basename = os.path.split(args.input_folder)
             if args.save_type in ['splash','both']:
-                imgmasked = img.clone()
+                if args.cs=="rgb":
+                    imgmasked = img.clone()
                 masknorm3=masknorm.repeat(1,3,1,1)
-                imgmasked[masknorm3<threshold]/=3
+                if args.dim:
+                    imgmasked[masknorm3<threshold]/=3
+                else:
+                    imgmasked[masknorm3<threshold]=tensorzero
                 save_path=args.pred_folder+basename[:-4]
                 outimage = imgmasked[0].cpu().detach().numpy()
                 outimage = np.moveaxis(outimage,0,-1)*255
@@ -95,8 +110,8 @@ if __name__ == '__main__':
                 save_image(masknorm[0], save_path +'_pred.jpg')
             print('Predicting the image took %f seconds (with setup time)'% (stop-start))
         else:
-            if os.path.isfile(args.input):
-                print("The specified file: "+args.input+" is not an jpg or png image, nor a folder containing jpg or png images. If you want to evaluate videos, use eval_video.py or demo_video.py.")
+            if os.path.isfile(args.input_folder):
+                print("The specified file: "+args.input_folder+" is not an jpg or png image, nor a folder containing jpg or png images. If you want to evaluate videos, use eval_video.py or demo_video.py.")
                 exit()
             if not os.path.exists(args.input_folder):
                 print("The folder: "+args.input_folder+" does not exists.")
@@ -109,11 +124,22 @@ if __name__ == '__main__':
                 if filename.endswith(".png") or filename.endswith(".jpg"):
                     path=args.input_folder+filename
                     print("Predicting for:"+filename)
-                    img = cv2.imread(path).astype(np.float32)
+                    img = cv2.imread(args.input_folder)
+                    if args.cs=="lab":
+                        if args.save_type in ['splash','both']:
+                            imgmasked = img.copy()
+                            imgmasked = cv2.resize(imgmasked,(args.width,args.height))
+                            imgmasked = np.moveaxis(imgmasked,-1,0)
+                            imgmasked = torch.from_numpy(imgmasked).float().unsqueeze(0)
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
                     img = cv2.resize(img,(640,480))
-                    img = np.moveaxis(img,-1,0)/255
+                    img = np.moveaxis(img,-1,0)
                     img = torch.from_numpy(img).float().unsqueeze(0)
+                    if args.cs=="rgb":
+                        img/=255
                     if args.cuda:
+                        if args.save_type in ['splash','both'] and args.cs=="lab":
+                            imgmasked = imgmasked.cuda()
                         img = img.cuda()
                     if counter==0:
                         start = timeit.default_timer()
@@ -131,20 +157,19 @@ if __name__ == '__main__':
                         wsetuptime+=stop-start
                     counter=counter+1
                     threshold = maskpred.mean()
-                    if args.cuda:
-                        tensorone = torch.Tensor([1.]).cuda()
-                        tensorzero = torch.Tensor([0.]).cuda()
-                    else:
-                        tensorone = torch.Tensor([1.])
-                        tensorzero = torch.Tensor([0.])
+                    
                     masknorm = maskpred.clone()
                     masknorm[maskpred>=threshold]=tensorone
                     masknorm[maskpred<threshold]=tensorzero
                     save_path=args.pred_folder+filename[:-4]
                     if args.save_type in ['splash','both']:
-                        imgmasked = img.clone()
+                        if args.cs=="rgb":
+                            imgmasked = img.clone()
                         masknorm3=masknorm.repeat(1,3,1,1)
-                        imgmasked[masknorm3<threshold]/=3
+                        if args.dim:
+                            imgmasked[masknorm3<threshold]/=3
+                        else:
+                            imgmasked[masknorm3<threshold]=tensorzero
                         outimage = imgmasked[0].cpu().detach().numpy()
                         outimage = np.moveaxis(outimage,0,-1)*255
                         cv2.imwrite(save_path+'_pred_masked.jpg', outimage)
@@ -152,7 +177,8 @@ if __name__ == '__main__':
                         save_image(masknorm[0], save_path +'_pred.jpg')
                 else:
                     continue
-            print('Predicting %d images took %f seconds, with the average of %f ( with setup time: %f, average: %f)' % (counter,time_sum,time_sum/counter,wsetuptime,wsetuptime/counter))  
-            if counter<1:
+            if counter==0:
                 print("The specified folder: "+args.input_folder+" does not contain images.")
+            else:
+                print('Predicting %d images took %f seconds, with the average of %f ( with setup time: %f, average: %f)' % (counter,time_sum,time_sum/counter,wsetuptime,wsetuptime/counter))  
     
