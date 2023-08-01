@@ -1,12 +1,17 @@
 import argparse
 import cv2
 import numpy as np
-import os
+import os, sys
+import timeit
 import torch
 from network import NetworkModule
-import sys
 from imgaug import augmenters as iaa
 import math
+
+folder_binary = "pred_masks/"
+folder_masking = "pred_masked/"
+folder_dimmed = "pred_dimmed/"
+folder_contoured = "pred_contoured/"
 
 def parse_args():
     """
@@ -27,14 +32,8 @@ def parse_args():
     parser.add_argument("--proc_width", default=640,type=int,help="processing width")
     parser.add_argument('--start_height', default=None, type=int, help='resize the input into this size, then it will be splitted to proc_height')
     parser.add_argument('--start_width', default=None, type=int, help='resize the input into this size, then it will be splitted to proc_width')
-    parser.add_argument('--video_height', default=None, type=int, help='height of the output video')
-    parser.add_argument('--video_width', default=None, type=int, help='width of the output video')
-    parser.add_argument('--sufix', default='_segmented', type=str, help='add this string to the end of the name of the output video')
     args = parser.parse_args()
     return args
-
-video_height = None
-video_width = None
 
 def progress(count, total, suffix=''):
     bar_len = 60
@@ -233,9 +232,10 @@ def assemble(img,masks):
     # print(maskpred.max())
     return maskpred.astype(np.uint8) 
 
-def process_image(img_orig):
+def process_image(img_orig,initital_run):
+    # img_orig = cv2.imread(directory+filename)
+    start_img = timeit.default_timer()
     imgmasked = img_orig.copy()
-    imgmasked=cv2.resize(imgmasked,(video_width,video_height))
     proc_img = img_orig.copy()
     if args.start_width is not None and args.start_height is not None:
         proc_img=cv2.resize(proc_img,(args.start_width,args.start_height))
@@ -246,6 +246,8 @@ def process_image(img_orig):
         splitted_images = []
         splitted_images.append(cv2.resize(proc_img,(args.proc_width,args.proc_height)))
     result_masks = []
+    duration_split = 0
+    init_duration = 0
     for i in range(len(splitted_images)):
         sub_image = splitted_images[i].copy()
         if sub_image.shape[0]!=args.proc_height or sub_image.shape[1]!=args.proc_width:
@@ -254,28 +256,24 @@ def process_image(img_orig):
         sub_image = torch.from_numpy(sub_image).float().unsqueeze(0)
         if args.cuda:
             sub_image = sub_image.cuda()
-        sub_maskpred = net(sub_image) 
-        # print("min,mean,max:%f, %f, %f"%(sub_maskpred.min(),sub_maskpred.mean(),sub_maskpred.max()))
-        sub_maskpred=sub_maskpred[0].cpu().detach().numpy()*255    
-        sub_maskpred=sub_maskpred.astype(np.uint8)
+        if not initital_run and i==0:
+            start = timeit.default_timer()
+            _ = net(sub_image) #in order to remove the setup-time
+            stop = timeit.default_timer()
+            init_duration=stop-start
+        start = timeit.default_timer()
+        sub_maskpred = net(sub_image)
+        stop = timeit.default_timer()
+        duration_split+=stop-start
+        sub_maskpred=sub_maskpred[0].cpu().detach().numpy()*255       
         sub_maskpred = np.moveaxis(sub_maskpred,0,-1)
         sub_maskpred = np.where(sub_maskpred<127,0,255)
         sub_maskpred = cv2.resize(sub_maskpred,(splitted_images[i].shape[1],splitted_images[i].shape[0]))
         sub_maskpred = np.where(sub_maskpred<127,0,255)
-        # top = int(sub_maskpred.shape[0]*0.05)
-        # bottom = int(sub_maskpred.shape[0]*0.95)
-        # left = int(sub_maskpred.shape[1]*0.05)
-        # right = int(sub_maskpred.shape[1]*0.95)
-        # cropping = iaa.Crop(percent=(top/sub_maskpred.shape[0], 1-right/sub_maskpred.shape[1], 1-bottom/sub_maskpred.shape[0], left/sub_maskpred.shape[1]), keep_size=False)
-        # cropped_mask = cropping(image=sub_maskpred)
-        # if cv2.countNonZero(cropped_mask)<3000:
-        #     sub_maskpred=sub_maskpred*0.0
-        #     sub_maskpred[top:bottom,left:right]=cropped_mask
-        result_masks.append(sub_maskpred)    
+        result_masks.append(sub_maskpred)
+    
     maskpred=assemble(proc_img,result_masks)
-    if maskpred.shape[0]!=video_height or maskpred.shape[1]!=video_width:
-        maskpred=cv2.resize(maskpred,(video_width,video_height))
-    maskpred=np.where(maskpred>=127,255,0)
+    maskpred = np.where(maskpred<127,0,255)
     masknorm3 = np.zeros((maskpred.shape[0],maskpred.shape[1],3), np.uint8)
     masknorm3[:,:,0]=maskpred
     masknorm3[:,:,1]=maskpred
@@ -303,35 +301,49 @@ def process_image(img_orig):
         imgmod3 = imgmasked.copy()
         cv2.drawContours(imgmod3, contours, -1, (0, 0, 255), 1)
         ret_contoured=imgmod3
-    return ret_mask, ret_masked, ret_dimmed, ret_contoured    
+    stop_img = timeit.default_timer()
+    duration_img = stop_img-start_img-init_duration
+    return ret_mask, ret_masked, ret_dimmed, ret_contoured, duration_img, duration_split
+    
 
 if __name__ == '__main__':
 
     args = parse_args()
+    if not args.pred_folder.endswith("/"):
+        args.pred_folder=args.pred_folder+"/"
     isExist = os.path.exists(args.pred_folder)
     if not isExist:
         os.makedirs(args.pred_folder)
-        print("The new directory for saving images while training is created!")
+        print("The new directory for saving the preds is created!")
+    if ("binary" in args.save_type or args.save_type=="all") and not os.path.exists(args.pred_folder+folder_binary):
+        os.makedirs(args.pred_folder+folder_binary)
+    if ("masking" in args.save_type or args.save_type=="all") and not os.path.exists(args.pred_folder+folder_masking):
+        os.makedirs(args.pred_folder+folder_masking)
+    if ("dim" in args.save_type or args.save_type=="all") and not os.path.exists(args.pred_folder+folder_dimmed):
+        os.makedirs(args.pred_folder+folder_dimmed)
+    if ("contour" in args.save_type or args.save_type=="all") and not os.path.exists(args.pred_folder+folder_contoured):
+        os.makedirs(args.pred_folder+folder_contoured)
     if torch.cuda.is_available() and not args.cuda:
         print("WARNING: CUDA device is available. You might want to run the program with --cuda=True")
     if args.model_size not in ['small','medium','large']:
         print("WARNING. Model size of <%s> is not a valid unit. Accepted units are: small, medium, large. Defaulting to medium."%(args.model_size))
         args.model_size = 'medium'
-    # network initialization
-    load_name = os.path.join(args.model_path)
     model_size = args.model_size
-    if "small" in load_name:
+    model_dir, model_name = os.path.split(args.model_path)
+    if "small" in model_name:
         model_size = "small"
-    elif "medium" in load_name:
+    elif "medium" in model_name:
         model_size = "medium"
-    elif "large" in load_name:
+    elif "large" in model_name:
         model_size = "large"
+    # network initialization
     print('Initializing model...')
     net = NetworkModule(fixed_feature_weights=False,size=model_size)
     if args.cuda:
         net = net.cuda()
-    print("Model initialization done.")      
+    print("Model initialization done.")  
     
+    load_name = os.path.join(args.model_path)
     print("loading checkpoint %s" % (load_name))
     state = net.state_dict()
     checkpoint = torch.load(load_name)
@@ -340,155 +352,105 @@ if __name__ == '__main__':
     net.load_state_dict(state)
     if 'pooling_mode' in checkpoint.keys():
         POOLING_MODE = checkpoint['pooling_mode']
-    print("loaded checkpoint %s" % (load_name))
+    print("loaded checkpoint")
     del checkpoint
     torch.cuda.empty_cache()
     net.eval()
     print('evaluating...')
-    img_array = []
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
-    myFrameNumber = args.frames
-    video = None
     with torch.no_grad():
-        if args.input.endswith('.mp4'):
+
+        ### Segment only one image
+        if args.input.endswith('.png') or args.input.endswith('.jpg'):
+            directory, filename = os.path.split(args.input)
+            if directory[-1]!="/":
+                directory=directory+"/"
             if not os.path.exists(args.input):
                 print("The file: "+args.input+" does not exists.")
                 exit()
-            dirname, basename = os.path.split(args.input)
-            save_path=args.pred_folder+basename[:-4]
-            print("processing: "+args.input)
+            img = cv2.imread(directory+filename)
+            res_binary, res_masked, res_dimmed, res_contoured, duration_img, duration_splits = process_image(img,0)
+            if "binary" in args.save_type or args.save_type=="all":
+                cv2.imwrite(args.pred_folder+folder_binary+filename, res_binary)
+            if "masking" in args.save_type or args.save_type=="all":
+                cv2.imwrite(args.pred_folder+folder_masking+filename, res_masked)
+            if "dim" in args.save_type or args.save_type=="all":
+                cv2.imwrite(args.pred_folder+folder_dimmed+filename, res_dimmed)
+            if "contour" in args.save_type or args.save_type=="all":
+                cv2.imwrite(args.pred_folder+folder_contoured+filename, res_contoured)
+            print('Segmenting the image took a total of %f seconds (%f seconds in network)'%(duration_img,duration_splits))
+
+
+        ### Segment the frames of a video, and save them separately
+        elif args.input.endswith('.mp4'):
+            directory, filename = os.path.split(args.input)
+            if directory[-1]!="/":
+                directory=directory+"/"
+            if not os.path.exists(args.input):
+                print("The file: "+args.input+" does not exists.")
+                exit()
             cap = cv2.VideoCapture(args.input)
             totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
             print("total frames in video: "+str(totalFrames))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            if args.video_width is not None:
-                video_width  = args.video_width
-            else:
-                video_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            if args.video_height is not None:
-                video_height = args.video_height
-            else:
-                video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            # print("Frame size: %d,%d"%(height,width))
-            if "binary" in args.save_type or args.save_type=="all":
-                video_binary = cv2.VideoWriter(save_path+args.sufix+"_binary.mp4", fourcc, fps, (video_width,video_height))
-            if "masking" in args.save_type or args.save_type=="all":
-                video_masked = cv2.VideoWriter(save_path+args.sufix+"_masked.mp4", fourcc, fps, (video_width,video_height))
-            if "dim" in args.save_type or args.save_type=="all":
-                video_dimmed = cv2.VideoWriter(save_path+args.sufix+"_dim.mp4", fourcc, fps, (video_width,video_height))
-            if "contour" in args.save_type or args.save_type=="all":
-                video_contoured = cv2.VideoWriter(save_path+args.sufix+"_contour.mp4", fourcc, fps, (video_width,video_height))
-            for currentFrame in range(0,totalFrames,args.frames):
+            time_sum_imgs=0
+            time_sum_splits=0
+            print("\n")
+            for currentFrame in range(0,int(totalFrames),args.frames):
                 progress(currentFrame,totalFrames,"frames")
                 cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                 ret, img = cap.read()
-                res_binary, res_masked, res_dimmed, res_contoured=process_image(img)
+                res_binary, res_masked, res_dimmed, res_contoured, duration_img, duration_splits = process_image(img,0)
+                time_sum_imgs+=duration_img
+                time_sum_splits+=duration_splits
+                number=f'{currentFrame:05d}'
                 if "binary" in args.save_type or args.save_type=="all":
-                    video_binary.write(res_binary.astype(np.uint8))
+                    cv2.imwrite(args.pred_folder+folder_binary+filename[:-4]+"_f_"+str(number)+".png", res_binary)
                 if "masking" in args.save_type or args.save_type=="all":
-                    video_masked.write(res_masked.astype(np.uint8))
+                    cv2.imwrite(args.pred_folder+folder_masking+filename[:-4]+"_f_"+str(number)+".png", res_masked)
                 if "dim" in args.save_type or args.save_type=="all":
-                    video_dimmed.write(res_dimmed.astype(np.uint8))
+                    cv2.imwrite(args.pred_folder+folder_dimmed+filename[:-4]+"_f_"+str(number)+".png", res_dimmed)
                 if "contour" in args.save_type or args.save_type=="all":
-                    video_contoured.write(res_contoured.astype(np.uint8))
+                    cv2.imwrite(args.pred_folder+folder_contoured+filename[:-4]+"_f_"+str(number)+".png", res_contoured)
             cap.release()
-            if "binary" in args.save_type or args.save_type=="all":
-                video_binary.release()
-            if "masking" in args.save_type or args.save_type=="all":
-                video_masked.release()
-            if "dim" in args.save_type or args.save_type=="all":
-                video_dimmed.release()
-            if "contour" in args.save_type or args.save_type=="all":
-                video_contoured.release()
-            print("done")
+            print("\n")
+            print('Segmenting the video took a total of %f seconds (%f seconds in network)'%(time_sum_imgs,time_sum_splits))
+
+
+        ### Segment the images in a folder
         else:
             if os.path.isfile(args.input):
-                print("The specified file: "+args.input+" is not an mp4 video, nor a folder containing mp4 videos. If you want to evaluate images, use eval.py. If your videos are in different format than mp4, convert them or rewrite the code.")
+                print("The specified file: "+args.input+" is not an jpg or png image, nor a folder containing jpg or png images. If you want to evaluate videos, use eval_video.py or demo_video.py.")
                 exit()
             if not os.path.exists(args.input):
                 print("The folder: "+args.input+" does not exists.")
                 exit()
             dlist=os.listdir(args.input)
             dlist.sort()
-            fps = 0
-            video = None
+            time_sum_imgs = 0
+            time_sum_splits= 0
             counter = 0
+            print("\n")
             for filename in dlist:
-                if filename.endswith(".mp4"):
-                    counter = counter+1
-                    print("processing: "+args.input+filename)
-                    cap = cv2.VideoCapture(args.input+filename)
-                    totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                    print("total frames in video: "+str(totalFrames))
-                                    
-                    if video == None or not args.one_vid:
-                        if args.one_vid:
-                            if "binary" in args.save_type or args.save_type=="all":
-                                save_path_binary=args.pred_folder+args.sufix+"_binary.mp4"
-                            if "masking" in args.save_type or args.save_type=="all":
-                                save_path_masked=args.pred_folder+args.sufix+"_masked.mp4"
-                            if "dim" in args.save_type or args.save_type=="all":
-                                save_path_dimmed=args.pred_folder+args.sufix+"_dim.mp4"
-                            if "contour" in args.save_type or args.save_type=="all":
-                                save_path_contoured=args.pred_folder+args.sufix+"_contour.mp4"
-                        else:
-                            if "binary" in args.save_type or args.save_type=="all":
-                                save_path_binary=args.pred_folder+filename[:-4]+args.sufix+"_binary.mp4"
-                            if "masking" in args.save_type or args.save_type=="all":
-                                save_path_masked=args.pred_folder+filename[:-4]+args.sufix+"_masked.mp4"
-                            if "dim" in args.save_type or args.save_type=="all":
-                                save_path_dimmed=args.pred_folder+filename[:-4]+args.sufix+"_dim.mp4"
-                            if "contour" in args.save_type or args.save_type=="all":
-                                save_path_contoured=args.pred_folder+filename[:-4]+args.sufix+"_contour.mp4"
-                        if args.video_width is not None:
-                            video_width  = args.video_width
-                        else:
-                            video_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        if args.video_height is not None:
-                            video_height = args.video_height
-                        else:
-                            video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        fps = cap.get(cv2.CAP_PROP_FPS)
-                        if "binary" in args.save_type or args.save_type=="all":
-                            video_binary = cv2.VideoWriter(save_path_binary, fourcc, int(fps), (video_width,video_height))
-                        if "masking" in args.save_type or args.save_type=="all":
-                            video_masked = cv2.VideoWriter(save_path_masked, fourcc, int(fps), (video_width,video_height))
-                        if "dim" in args.save_type or args.save_type=="all":
-                            video_dimmed = cv2.VideoWriter(save_path_dimmed, fourcc, int(fps), (video_width,video_height))
-                        if "contour" in args.save_type or args.save_type=="all":
-                            video_contoured = cv2.VideoWriter(save_path_contoured, fourcc, int(fps), (video_width,video_height))
-                    for currentFrame in range(0,totalFrames,args.frames):
-                        progress(currentFrame,totalFrames,"frames")
-                        cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
-                        ret, img = cap.read()
-                        res_binary, res_masked, res_dimmed, res_contoured=process_image(img)
-                        if "binary" in args.save_type or args.save_type=="all":
-                            video_binary.write(res_binary.astype(np.uint8))
-                        if "masking" in args.save_type or args.save_type=="all":
-                            video_masked.write(res_masked.astype(np.uint8))
-                        if "dim" in args.save_type or args.save_type=="all":
-                            video_dimmed.write(res_dimmed.astype(np.uint8))
-                        if "contour" in args.save_type or args.save_type=="all":
-                            video_contoured.write(res_contoured.astype(np.uint8))
-                    cap.release()
-                    if not args.one_vid:
-                        if "binary" in args.save_type or args.save_type=="all":
-                            video_binary.release()
-                        if "masking" in args.save_type or args.save_type=="all":
-                            video_masked.release()
-                        if "dim" in args.save_type or args.save_type=="all":
-                            video_dimmed.release()
-                        if "contour" in args.save_type or args.save_type=="all":
-                            video_contoured.release()
-                    print("done")
-            if args.one_vid and video != None:
-                if "binary" in args.save_type or args.save_type=="all":
-                    video_binary.release()
-                if "masking" in args.save_type or args.save_type=="all":
-                    video_masked.release()
-                if "dim" in args.save_type or args.save_type=="all":
-                    video_dimmed.release()
-                if "contour" in args.save_type or args.save_type=="all":
-                    video_contoured.release()
-            if counter<1:
-                print("The specified folder: "+args.input+" does not contain videos.")
+                if filename.endswith(".png") or filename.endswith(".jpg"):
+                    progress(counter,len(dlist),filename)
+                    # print("Predicting for: "+filename)
+                    img = cv2.imread(args.input+filename)
+                    res_binary, res_masked, res_dimmed, res_contoured, duration_img, duration_splits = process_image(img,counter)
+                    if "binary" in args.save_type or args.save_type=="all":
+                        cv2.imwrite(args.pred_folder+folder_binary+filename, res_binary)
+                    if "masking" in args.save_type or args.save_type=="all":
+                        cv2.imwrite(args.pred_folder+folder_masking+filename, res_masked)
+                    if "dim" in args.save_type or args.save_type=="all":
+                        cv2.imwrite(args.pred_folder+folder_dimmed+filename, res_dimmed)
+                    if "contour" in args.save_type or args.save_type=="all":
+                        cv2.imwrite(args.pred_folder+folder_contoured+filename, res_contoured)
+                    time_sum_imgs+=duration_img
+                    time_sum_splits+=duration_splits
+                    counter+=1
+                else:
+                    continue
+            print("\n")
+            if counter==0:
+                print("The specified folder: "+args.input+" does not contain images.")
+            else:
+                print('Segmenting %d images took a total of %f seconds, with the average of %f ( in network: %f, average: %f)' % (counter,time_sum_imgs,time_sum_imgs/counter,time_sum_splits,time_sum_splits/counter))  
+    

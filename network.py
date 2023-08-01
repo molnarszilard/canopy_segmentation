@@ -92,8 +92,6 @@ class NetworkModule(nn.Module):
         if self.size in ['small']:
             self.predict1 = smooth(192, 64)
         self.predict2 = predict(64, 1)
-
-        self.activation = nn.Sigmoid()
         
     def _upsample_add(self, x, y):
         '''Upsample and add two feature maps.
@@ -173,5 +171,4 @@ class NetworkModule(nn.Module):
         
         pred1 = self.predict1(vol)
         pred2 = self.predict2(pred1)
-        pred3 = self.activation(pred2)
-        return pred3
+        return pred2

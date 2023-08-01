@@ -9,8 +9,9 @@ from network import NetworkModule
 import numpy as np
 import sys
 from torchsummary import summary
+import cv2
 
-def progress(count, total, epoch, suffix=''):
+def progress(count, total, epoch, suffix):
     bar_len = 10
     filled_len = int(round(bar_len * count / float(total)))
 
@@ -26,7 +27,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description='Segmenting vine canopy')
     parser.add_argument('--bs', dest='bs', default=4, type=int, help='batch_size')
-    parser.add_argument('--checkepoch', dest='checkepoch', default=9, type=int, help='checkepoch to load model')
+    parser.add_argument('--checkepoch', dest='checkepoch', default=None, type=str, help='checkepoch to load model')
     parser.add_argument('--cuda', dest='cuda', default=True, help='whether use CUDA')
     parser.add_argument('--data_dir', dest='data_dir', default='./dataset/canopy_mask_dataset/group1/', type=str, help='dataset directory')
     parser.add_argument('--dir_images', dest='dir_images', default='training_images/', type=str, help='directory where to save the training images')
@@ -46,7 +47,8 @@ def parse_args():
     parser.add_argument('--save_images', dest='save_images', default=100, type=int, help='save every x-th image during the training to see its evolution, 0 - means off')
     parser.add_argument('--start_at', dest='start_epoch', default=0, type=int, help='epoch to start with')
     parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab, luv, hls, hsv, ycrcb')
-    
+    parser.add_argument('--img_height', dest='img_height', default=480, type=int, help='resize the input images to this height')
+    parser.add_argument('--img_width', dest='img_width', default=640, type=int, help='resize the input images to this width')
     args = parser.parse_args()
     return args
 
@@ -60,12 +62,21 @@ class LossIoU(nn.Module):
         super(LossIoU, self).__init__()
 
     def forward(self, pred, gt):
+        # print("GT min,mean,max:%f, %f, %f"%(gt.min(),gt.mean(),gt.max()))
+        
         intersection_tensor=pred*gt
         intersection = torch.sum(intersection_tensor, dim = (0,1,2,3))
         union_tensor = pred+gt-intersection_tensor
         union = torch.sum(union_tensor, dim = (0,1,2,3))
         loss = intersection/union
         return 1-loss
+    
+class RMSELoss(nn.Module):
+    def __init__(self):
+        super(RMSELoss, self).__init__()
+
+    def forward(self, pred, gt):
+        return torch.sqrt(torch.mean((pred-gt)**2))
 
 if __name__ == '__main__':
     args = parse_args()
@@ -80,9 +91,9 @@ if __name__ == '__main__':
     if args.model_size not in ['small','medium','large']:
         print("WARNING. Model size of <%s> is not a valid unit. Accepted units are: small, medium, large. Defaulting to medium."%(args.model_size))
         args.model_size = 'medium'
-    train_dataset = DataLoader(root=args.data_dir,train=True,cs=args.cs)
+    train_dataset = DataLoader(root=args.data_dir,train=True,cs=args.cs,img_height=args.img_height,img_width=args.img_width)
     train_size = len(train_dataset)
-    eval_dataset = DataLoader(root=args.data_dir,train=False,cs=args.cs)
+    eval_dataset = DataLoader(root=args.data_dir,train=False,cs=args.cs,img_height=args.img_height,img_width=args.img_width)
     eval_size = len(eval_dataset)
     print(train_size)
 
@@ -93,7 +104,15 @@ if __name__ == '__main__':
 
     # network initialization
     print('Initializing model...')
-    net = NetworkModule(fixed_feature_weights=False,size=args.model_size)
+    model_size = args.model_size
+    if args.checkepoch is not None:
+        if "small" in args.checkepoch:
+            model_size = "small"
+        elif "medium" in args.checkepoch:
+            model_size = "medium"
+        elif "large" in args.checkepoch:
+            model_size = "large"
+    net = NetworkModule(fixed_feature_weights=False,size=model_size)
     if args.cuda:
         net = net.cuda()
     print("Model initialization done.")
@@ -122,8 +141,9 @@ if __name__ == '__main__':
 
     # resume
     if args.resume:
-        load_name = os.path.join(args.model_dir,
-          'saved_model_{}_{}.pth'.format(args.checkepoch))
+        load_name = os.path.join(args.model_dir,args.checkepoch)
+        
+
         print("loading checkpoint %s" % (load_name))
         state = net.state_dict()
         checkpoint = torch.load(load_name)
@@ -131,8 +151,8 @@ if __name__ == '__main__':
         checkpoint = {k: v for k, v in checkpoint['model'].items() if k in state}
         state.update(checkpoint)
         net.load_state_dict(state)
-        if args.model_size not in [net.get_size()]:
-            print("WARNING. Model size of <%s> is not equal to the size in the saved model. The correct model size for this is: %s"%(args.model_size,net.get_size()))
+        if model_size not in [net.get_size()]:
+            print("WARNING. Model size of <%s> is not equal to the size in the saved model. The correct model size for this is: %s"%(model_size,net.get_size()))
         if 'pooling_mode' in checkpoint.keys():
             POOLING_MODE = checkpoint['pooling_mode']
         print("loaded checkpoint %s" % (load_name))
@@ -140,7 +160,8 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
 
     loss_iou = LossIoU()
-    summary(net, (3, 480, 640),4)
+    loss_rmse = RMSELoss()
+    summary(net, (3, train_dataset.height, train_dataset.width),4)
     # print(net)
     iters_per_epoch = int(train_size / args.bs)
     for epoch in range(args.start_epoch, args.max_epochs):
@@ -159,14 +180,17 @@ if __name__ == '__main__':
                 img = img.cuda()
                 maskgt = maskgt.cuda()
             optimizer.zero_grad()
-            maskpred = net(img)                 
-            loss_train_iou = loss_iou(maskpred, maskgt)            
-            loss = loss_train_iou*args.loss_multiplier
+            maskpred = net(img)
+            loss_train_iou = loss_iou(maskpred, maskgt)
+            loss_train_rmse = loss_rmse(maskpred, maskgt)
+            # print("IoU: %f, RMSE: %f"%(loss_train_iou,loss_train_rmse))
+            loss = (loss_train_iou+loss_train_rmse)*args.loss_multiplier
+            # loss = loss_train_rmse
             # loss.requires_grad =True 
             loss.backward()
             optimizer.step()
             # info
-            progress(step,iters_per_epoch-1,epoch,str(loss.item()))
+            progress(step,iters_per_epoch-1,epoch,"Iou: %f, RMSE: %f"%(loss_train_iou.item(),loss_train_rmse.item()))
             # if step % args.disp_interval == 0:
                 # print("[epoch %2d][iter %4d] loss: %.4f " \
                 #                 % (epoch, step, loss))
@@ -176,7 +200,7 @@ if __name__ == '__main__':
         if epoch%args.save_epoch==0 or epoch==args.max_epochs-1:
             if not os.path.exists(args.model_dir):
                         os.makedirs(args.model_dir)
-            save_name = os.path.join(args.model_dir, 'saved_model_{}_{}.pth'.format(args.session, epoch))
+            save_name = os.path.join(args.model_dir, 'canopy_model_{}_s{}_e{}.pth'.format(model_size,args.session, epoch))
             torch.save({'epoch': epoch+1, 'model': net.state_dict(), }, save_name)
 
             print('save model: {}'.format(save_name))
@@ -185,6 +209,14 @@ if __name__ == '__main__':
         with torch.no_grad():
             # setting to eval mode
             net.eval()
+            if args.cuda:
+                tensorone = torch.Tensor([1.]).cuda()
+                tensorzero = torch.Tensor([0.]).cuda()
+                tensorthreshold = torch.Tensor([0.5]).cuda()
+            else:
+                tensorone = torch.Tensor([1.])
+                tensorzero = torch.Tensor([0.])
+                tensorthreshold = torch.Tensor([0.5])
             eval_data_iter = iter(eval_dataloader)
             for i, data in enumerate(eval_data_iter):
                 # print(i,'/',len(eval_data_iter)-1)
@@ -195,8 +227,10 @@ if __name__ == '__main__':
                     img = img.cuda()
                     maskgt = maskgt.cuda()            
                 maskpred = net(img)
-                loss_eval_iou = loss_iou(maskpred, maskgt)               
-                eval_loss += loss_eval_iou *args.loss_multiplier
+                
+                loss_eval_iou = loss_iou(maskpred, maskgt)
+                loss_eval_rmse = loss_rmse(maskpred, maskgt)  
+                eval_loss += (loss_eval_iou+loss_eval_rmse) *args.loss_multiplier
                 if args.save_images and i%100==0:
                     if not os.path.exists(args.dir_images):
                         os.makedirs(args.dir_images)
@@ -205,11 +239,17 @@ if __name__ == '__main__':
                     numberi=f'{i:05d}'
                     filename = args.dir_images+'trainingpred_'+numbere+'_'+numberi+'.png'
                     filename = str(filename)
-                    threshold = maskpred.mean()
                     imgmasked = img.clone()
-                    maskpred3=maskpred.repeat(1,3,1,1)
-                    imgmasked[maskpred3<=threshold]/=3
-                    save_image(imgmasked[0], filename)           
+                    masknorm = maskpred.clone()    
+                    masknorm[maskpred>=tensorthreshold]=tensorone
+                    masknorm[maskpred<tensorthreshold]=tensorzero    
+                    masknorm3=masknorm.repeat(1,3,1,1)
+                    imgmasked[masknorm3<tensorthreshold]/=3
+                    # save_path=args.pred_folder+filename[:-4]
+                    outimage = imgmasked[0].cpu().detach().numpy()
+                    outimage = np.moveaxis(outimage,0,-1)#*255
+                    # save_image(outimage, filename)  
+                    cv2.imwrite(filename, outimage)         
                 
             eval_loss = eval_loss/len(eval_dataloader)
             # val_loss_arr.append(eval_loss)
@@ -217,5 +257,5 @@ if __name__ == '__main__':
             print("[epoch %2d] loss: %.4f " \
                             % (epoch, torch.sqrt(eval_loss)))
             with open(os.path.join(args.model_dir, 'training_log_{}.txt'.format(args.session)), 'a') as f:
-                f.write("[epoch %2d] loss: %.4f\n" \
+                f.write("[epoch %2d] accuracy: %.4f\n" \
                             % (epoch, torch.sqrt(eval_loss)))
