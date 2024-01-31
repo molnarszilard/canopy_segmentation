@@ -2,6 +2,10 @@
 
 In this repo, we provide the code for our FPN-based canopy segmentation method.
 
+## Abstract
+
+With the widening of the Agriculture 4.0 era, the use of autonomous robots in the agriculture field is becoming a priority. The key component of such an autonomous, often multi-robot system is the perception of the environment, which is based on 2D and 3D cameras. A base processing part of the 2D images is the segmentation of different zones in the images. This is the case also in the vineyards where in order to process complex plant canopies, segmenting the parts of the image containing the area of interest is a part of the pre-processing chain. In this work, we present a Feature Pyramid Network-based grape canopy segmentation method, which has great potential to create a segmentation mask, containing only the leaves and fruits of interest. We conducted our tests in different vineyards and we also obtained the above state-of-the-art segmentation results on public and custom datasets.
+
 ## Preparation
 
 You need to install pytorch (our version is 1.8.0), numpy, timeit, opencv, torchsummary. (conda environment is useful)
