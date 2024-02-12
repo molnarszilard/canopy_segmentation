@@ -1,7 +1,5 @@
 import os
 import torch
-from torchvision.utils import save_image
-import torch.nn as nn
 import time
 import argparse
 from dataloader import DataLoader
@@ -10,10 +8,12 @@ import numpy as np
 import sys
 from torchsummary import summary
 import cv2
+from metrics import RMSELoss
+from metrics import LossIoU
 
 def progress(count, total, epoch, suffix):
     bar_len = 10
-    filled_len = int(round(bar_len * count / float(total)))
+    filled_len = int(bar_len * count / float(total))
 
     percents = round(100.0 * count / float(total), 1)
     bar = '=' * filled_len + '-' * (bar_len - filled_len)
@@ -31,52 +31,27 @@ def parse_args():
     parser.add_argument('--cuda', dest='cuda', default=True, help='whether use CUDA')
     parser.add_argument('--data_dir', dest='data_dir', default='./dataset/canopy_mask_dataset/group1/', type=str, help='dataset directory')
     parser.add_argument('--dir_images', dest='dir_images', default='training_images/', type=str, help='directory where to save the training images')
-    parser.add_argument('--disp_interval', dest='disp_interval', default=10, type=int, help='display interval')
     parser.add_argument('--epochs', dest='max_epochs', default=10, type=int, help='number of epochs to train')
-    parser.add_argument('--loss_multiplier', dest='loss_multiplier', default=1, type=int, help='increase the loss for much faster training')
-    parser.add_argument('--lr_decay_gamma', dest='lr_decay_gamma', default=0.1, type=float, help='learning rate decay ratio')
-    parser.add_argument('--lr_decay_step', dest='lr_decay_step', default=5, type=int, help='step to do learning rate decay, unit is epoch')
-    parser.add_argument('--lr', dest='lr', default=1e-4, type=float, help='starting learning rate')
+    parser.add_argument('--lr_decay_gamma', dest='lr_decay_gamma', default=4e-5, type=float, help='learning rate decay ratio')
+    parser.add_argument('--lr', dest='lr', default=1e-5, type=float, help='starting learning rate')
     parser.add_argument('--model_dir', dest='model_dir', default='saved_models', type=str, help='output directory')
-    parser.add_argument('--model_size', dest='model_size', default='medium', type=str, help='size of the model: small, medium, large')
-    parser.add_argument('--num_workers', dest='num_workers', default=1, type=int, help='num_workers')
+    parser.add_argument('--model_size', dest='model_size', default='large', type=str, help='size of the model: small, medium, large')
+    parser.add_argument('--num_workers', dest='num_workers', default=8, type=int, help='num_workers')
     parser.add_argument('--o', dest='optimizer', default="adam", type=str, help='training optimizer')
+    parser.add_argument('--momentum', default=0.9, type=float, help='training momentum')
+    parser.add_argument('--eps', default=1e-8, type=float, help='eps for adam optimizer')
     parser.add_argument('--r', dest='resume', default=False, type=bool, help='resume checkpoint or not')
     parser.add_argument('--s', dest='session', default=1, type=int, help='training session')
     parser.add_argument('--save_epoch', dest='save_epoch', default=5, type=int, help='after how many epochs do you want the model to be saved')
     parser.add_argument('--save_images', dest='save_images', default=100, type=int, help='save every x-th image during the training to see its evolution, 0 - means off')
     parser.add_argument('--start_at', dest='start_epoch', default=0, type=int, help='epoch to start with')
     parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab, luv, hls, hsv, ycrcb')
-    parser.add_argument('--img_height', dest='img_height', default=480, type=int, help='resize the input images to this height')
+    parser.add_argument('--img_height', dest='img_height', default=360, type=int, help='resize the input images to this height')
     parser.add_argument('--img_width', dest='img_width', default=640, type=int, help='resize the input images to this width')
     args = parser.parse_args()
     return args
 
-def adjust_learning_rate(optimizer, decay=0.1):
-    """Sets the learning rate to the initial LR decayed by 0.5 every 20 epochs"""
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = decay * param_group['lr']
 
-class LossIoU(nn.Module):
-    def __init__(self):
-        super(LossIoU, self).__init__()
-
-    def forward(self, pred, gt):
-        # print("GT min,mean,max:%f, %f, %f"%(gt.min(),gt.mean(),gt.max()))
-        
-        intersection_tensor=pred*gt
-        intersection = torch.sum(intersection_tensor, dim = (0,1,2,3))
-        union_tensor = pred+gt-intersection_tensor
-        union = torch.sum(union_tensor, dim = (0,1,2,3))
-        loss = intersection/union
-        return 1-loss
-    
-class RMSELoss(nn.Module):
-    def __init__(self):
-        super(RMSELoss, self).__init__()
-
-    def forward(self, pred, gt):
-        return torch.sqrt(torch.mean((pred-gt)**2))
 
 if __name__ == '__main__':
     args = parse_args()
@@ -123,20 +98,14 @@ if __name__ == '__main__':
     params = []
     for key, value in dict(net.named_parameters()).items():
       if value.requires_grad:
-        if 'bias' in key:
-            DOUBLE_BIAS=0
-            WEIGHT_DECAY=4e-5
-            params += [{'params':[value],'lr':lr*(DOUBLE_BIAS + 1), \
-                  'weight_decay': 4e-5 and WEIGHT_DECAY or 0}]
-        else:
-            params += [{'params':[value],'lr':lr, 'weight_decay': 4e-5}]
+        params += [{'params':[value],'lr':lr, 'weight_decay': args.lr_decay_gamma}]
     print("Parameters are set.")
 
     print("Configuring optimizer...")
     if args.optimizer == "adam":
-        optimizer = torch.optim.Adam(params, lr=lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=4e-5)
+        optimizer = torch.optim.Adam(params, lr=lr, betas=(args.momentum, args.momentum*1.11), eps=args.eps, weight_decay=args.lr_decay_gamma)
     elif args.optimizer == "sgd":
-        optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9)
+        optimizer = torch.optim.SGD(params, lr=lr, momentum=args.momentum)
     print("Optimizer configured.")
 
     # resume
@@ -161,17 +130,14 @@ if __name__ == '__main__':
 
     loss_iou = LossIoU()
     loss_rmse = RMSELoss()
-    summary(net, (3, train_dataset.height, train_dataset.width),4)
+    # summary(net, (3, train_dataset.height, train_dataset.width),4)
     # print(net)
     iters_per_epoch = int(train_size / args.bs)
+    min_eval_loss = 1000.0
     for epoch in range(args.start_epoch, args.max_epochs):
         # setting to train mode
         net.train()
-        start = time.time()
-        if epoch % (args.lr_decay_step + 1) == 0:
-            adjust_learning_rate(optimizer, args.lr_decay_gamma)
-            lr *= args.lr_decay_gamma
-        
+        start = time.time()        
         train_data_iter = iter(train_dataloader)
         for step in range(iters_per_epoch):
             data = train_data_iter.next()            
@@ -180,32 +146,24 @@ if __name__ == '__main__':
                 img = img.cuda()
                 maskgt = maskgt.cuda()
             optimizer.zero_grad()
-            maskpred = net(img)
+            maskpred = net(img/255)
             loss_train_iou = loss_iou(maskpred, maskgt)
             loss_train_rmse = loss_rmse(maskpred, maskgt)
             # print("IoU: %f, RMSE: %f"%(loss_train_iou,loss_train_rmse))
-            loss = (loss_train_iou+loss_train_rmse)*args.loss_multiplier
+            loss = (loss_train_iou+loss_train_rmse)
             # loss = loss_train_rmse
             # loss.requires_grad =True 
             loss.backward()
             optimizer.step()
             # info
             progress(step,iters_per_epoch-1,epoch,"Iou: %f, RMSE: %f"%(loss_train_iou.item(),loss_train_rmse.item()))
-            # if step % args.disp_interval == 0:
-                # print("[epoch %2d][iter %4d] loss: %.4f " \
-                #                 % (epoch, step, loss))
-        print("done training epoch %d"%(epoch))
+        print("training epoch %d done - "%(epoch))
         end = time.time()
-        print('time elapsed: %fs' % (end - start))        
-        if epoch%args.save_epoch==0 or epoch==args.max_epochs-1:
-            if not os.path.exists(args.model_dir):
-                        os.makedirs(args.model_dir)
-            save_name = os.path.join(args.model_dir, 'canopy_model_{}_s{}_e{}.pth'.format(model_size,args.session, epoch))
-            torch.save({'epoch': epoch+1, 'model': net.state_dict(), }, save_name)
-
-            print('save model: {}'.format(save_name))
-        print('evaluating...')
+        # print('time elapsed: %fs' % (end - start))        
+        # print('evaluating...')
         eval_loss = 0
+        eval_loss_iou = 0
+        eval_loss_rmse = 0
         with torch.no_grad():
             # setting to eval mode
             net.eval()
@@ -218,6 +176,7 @@ if __name__ == '__main__':
                 tensorzero = torch.Tensor([0.])
                 tensorthreshold = torch.Tensor([0.5])
             eval_data_iter = iter(eval_dataloader)
+            eval_iter = 0
             for i, data in enumerate(eval_data_iter):
                 # print(i,'/',len(eval_data_iter)-1)
                 progress(i,len(eval_data_iter)-1,epoch," iters")
@@ -226,11 +185,14 @@ if __name__ == '__main__':
                 if args.cuda:
                     img = img.cuda()
                     maskgt = maskgt.cuda()            
-                maskpred = net(img)
+                maskpred = net(img/255)
                 
                 loss_eval_iou = loss_iou(maskpred, maskgt)
-                loss_eval_rmse = loss_rmse(maskpred, maskgt)  
-                eval_loss += (loss_eval_iou+loss_eval_rmse) *args.loss_multiplier
+                loss_eval_rmse = loss_rmse(maskpred, maskgt)
+                eval_iter += 1
+                eval_loss += (loss_eval_iou+loss_eval_rmse)
+                eval_loss_iou += loss_eval_iou
+                eval_loss_rmse += loss_eval_rmse
                 if args.save_images and i%100==0:
                     if not os.path.exists(args.dir_images):
                         os.makedirs(args.dir_images)
@@ -239,23 +201,41 @@ if __name__ == '__main__':
                     numberi=f'{i:05d}'
                     filename = args.dir_images+'trainingpred_'+numbere+'_'+numberi+'.png'
                     filename = str(filename)
+
                     imgmasked = img.clone()
                     masknorm = maskpred.clone()    
                     masknorm[maskpred>=tensorthreshold]=tensorone
-                    masknorm[maskpred<tensorthreshold]=tensorzero    
+                    masknorm[maskpred<tensorthreshold]=tensorzero
                     masknorm3=masknorm.repeat(1,3,1,1)
                     imgmasked[masknorm3<tensorthreshold]/=3
                     # save_path=args.pred_folder+filename[:-4]
                     outimage = imgmasked[0].cpu().detach().numpy()
-                    outimage = np.moveaxis(outimage,0,-1)#*255
+                    outimage = np.moveaxis(outimage,0,-1)
                     # save_image(outimage, filename)  
-                    cv2.imwrite(filename, outimage)         
+                    cv2.imwrite(filename, outimage)  
+                    # cv2.imwrite(filename, maskpred[0].cpu().detach().numpy()*255)      
                 
-            eval_loss = eval_loss/len(eval_dataloader)
-            # val_loss_arr.append(eval_loss)
+            eval_loss = eval_loss/eval_iter
+            eval_loss_iou = eval_loss_iou/eval_iter
+            eval_loss_rmse = eval_loss_rmse/eval_iter
+
             print("eval done")
-            print("[epoch %2d] loss: %.4f " \
-                            % (epoch, torch.sqrt(eval_loss)))
+            print("[epoch %2d] loss: %.4f , Iou: %.4f, RMSE: %.4f" \
+                            % (epoch, eval_loss,eval_loss_iou,eval_loss_rmse))
             with open(os.path.join(args.model_dir, 'training_log_{}.txt'.format(args.session)), 'a') as f:
                 f.write("[epoch %2d] accuracy: %.4f\n" \
-                            % (epoch, torch.sqrt(eval_loss)))
+                            % (epoch, eval_loss))
+            if eval_loss<min_eval_loss:
+                min_eval_loss=eval_loss
+                if not os.path.exists(args.model_dir):
+                            os.makedirs(args.model_dir)
+                save_name = os.path.join(args.model_dir, 'canopy_model_{}_s{}_best.pth'.format(model_size,args.session, epoch))
+                torch.save({'epoch': epoch+1, 'model': net.state_dict(), }, save_name)
+                print('save model: {}'.format(save_name))
+            if epoch%args.save_epoch==0 or epoch==args.max_epochs-1:
+                if not os.path.exists(args.model_dir):
+                            os.makedirs(args.model_dir)
+                save_name = os.path.join(args.model_dir, 'canopy_model_{}_s{}_e{}.pth'.format(model_size,args.session, epoch))
+                torch.save({'epoch': epoch+1, 'model': net.state_dict(), }, save_name)
+                print('save model: {}'.format(save_name))
+        

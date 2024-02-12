@@ -20,7 +20,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='canopy segmentation on video, creating another video')
     parser.add_argument('--cuda', default=True, action='store_true', help='whether use CUDA')
     parser.add_argument('--input', default='./dataset/input_images/flights/DJI_0607.mp4', type=str, help='path to a single input image for evaluation')
-    parser.add_argument('--pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
+    parser.add_argument('--pred_folder', default=None, type=str, help='where to save the predicted images.')
     parser.add_argument('--model_path', default='saved_models/saved_model_1_9.pth', type=str, help='path to the model to use')
     parser.add_argument('--model_size', default='large', type=str, help='size of the model: small, medium, large')
     parser.add_argument('--one_vid', default=True, type=bool, help='if you are processing multiple videos from a folder, do you want to create separate or only one video?')
@@ -28,10 +28,12 @@ def parse_args():
     parser.add_argument('--dim', default=False, type=bool, help='dim the pixels that are not segmented, or leave them black?')
     parser.add_argument('--cs', default='rgb', type=str, help='color space: rgb, lab')
     parser.add_argument('--save_type', default="binary", type=str, help='do you want to save the mask, the masked image, the dimmed image, or draw a contour: masking, binary, dim, contour, all')
-    parser.add_argument("--proc_height", default=480,type=int,help="processing height")
+    parser.add_argument("--proc_height", default=360,type=int,help="processing height")
     parser.add_argument("--proc_width", default=640,type=int,help="processing width")
-    parser.add_argument('--start_height', default=None, type=int, help='resize the input into this size, then it will be splitted to proc_height')
-    parser.add_argument('--start_width', default=None, type=int, help='resize the input into this size, then it will be splitted to proc_width')
+    parser.add_argument('--start_height', default=360, type=int, help='resize the input into this size, then it will be splitted to proc_height')
+    parser.add_argument('--start_width', default=640, type=int, help='resize the input into this size, then it will be splitted to proc_width')
+    parser.add_argument('--confidence', default=0.1, type=float, help='confidence threshold')
+    parser.add_argument('--contourwidth', default=1, type=int, help='width of the contour line')
     args = parser.parse_args()
     return args
 
@@ -228,17 +230,17 @@ def assemble(img,masks):
         maskpred = masks[0]
         index=index+1
     # maskpred=maskpred/int(maskpred.max())*255
-    maskpred = np.where(maskpred<127,0,255)
+    maskpred = np.where(maskpred<args.confidence*255,0,255)
     # print(maskpred.max())
-    return maskpred.astype(np.uint8) 
+    return maskpred
 
 def process_image(img_orig,initital_run):
     # img_orig = cv2.imread(directory+filename)
     start_img = timeit.default_timer()
     imgmasked = img_orig.copy()
-    proc_img = img_orig.copy()
     if args.start_width is not None and args.start_height is not None:
-        proc_img=cv2.resize(proc_img,(args.start_width,args.start_height))
+        img_orig=cv2.resize(img_orig,(args.start_width,args.start_height))
+    proc_img = img_orig.copy()
     # print("Initial size of image: %dx%d"%(h,w))
     if proc_img.shape[0]>args.proc_height or proc_img.shape[1]>args.proc_width:
         splitted_images=split(proc_img)
@@ -251,6 +253,8 @@ def process_image(img_orig,initital_run):
     for i in range(len(splitted_images)):
         sub_image = splitted_images[i].copy()
         if sub_image.shape[0]!=args.proc_height or sub_image.shape[1]!=args.proc_width:
+            print(splitted_images[i].shape)
+            print(sub_image.shape)
             sub_image = cv2.resize(sub_image,(args.proc_width,args.proc_height))
         sub_image = np.moveaxis(sub_image,-1,0)
         sub_image = torch.from_numpy(sub_image).float().unsqueeze(0)
@@ -258,22 +262,28 @@ def process_image(img_orig,initital_run):
             sub_image = sub_image.cuda()
         if not initital_run and i==0:
             start = timeit.default_timer()
-            _ = net(sub_image) #in order to remove the setup-time
+            _ = net(sub_image/255) #in order to remove the setup-time
             stop = timeit.default_timer()
             init_duration=stop-start
         start = timeit.default_timer()
-        sub_maskpred = net(sub_image)
+        sub_maskpred = net(sub_image/255)
         stop = timeit.default_timer()
         duration_split+=stop-start
-        sub_maskpred=sub_maskpred[0].cpu().detach().numpy()*255       
-        sub_maskpred = np.moveaxis(sub_maskpred,0,-1)
-        sub_maskpred = np.where(sub_maskpred<127,0,255)
-        sub_maskpred = cv2.resize(sub_maskpred,(splitted_images[i].shape[1],splitted_images[i].shape[0]))
-        sub_maskpred = np.where(sub_maskpred<127,0,255)
+        sub_maskpred=sub_maskpred[0,0].cpu().detach().numpy()*255       
+        # sub_maskpred = np.moveaxis(sub_maskpred,0,-1)
+        sub_maskpred = np.where(sub_maskpred<args.confidence*255,0,255)
+        if splitted_images[i].shape[0]!=args.proc_height or splitted_images[i].shape[1]!=args.proc_width:
+            sub_maskpred = cv2.resize(sub_maskpred,(splitted_images[i].shape[1],splitted_images[i].shape[0]))
+            sub_maskpred = np.where(sub_maskpred<args.confidence*255,0,255)
         result_masks.append(sub_maskpred)
-    
-    maskpred=assemble(proc_img,result_masks)
-    maskpred = np.where(maskpred<127,0,255)
+
+    if len(result_masks)>1:
+        maskpred=assemble(proc_img,result_masks).astype(np.float32)
+    else:
+        maskpred=result_masks[0]
+    maskpred = np.where(maskpred<args.confidence*255,0,255).astype(np.float32)
+    maskpred = cv2.resize(maskpred,(imgmasked.shape[1],imgmasked.shape[0])).astype(np.uint8)
+    maskpred = np.where(maskpred<args.confidence*255,0,255)
     masknorm3 = np.zeros((maskpred.shape[0],maskpred.shape[1],3), np.uint8)
     masknorm3[:,:,0]=maskpred
     masknorm3[:,:,1]=maskpred
@@ -286,20 +296,20 @@ def process_image(img_orig,initital_run):
         ret_mask=masknorm3
     if "masking" in args.save_type or args.save_type=="all":
         imgmod = imgmasked.copy()
-        imgmod = np.where(masknorm3<127,0.0,imgmod)
+        imgmod = np.where(masknorm3<args.confidence*255,0.0,imgmod)
         ret_masked=imgmod
     if "dim" in args.save_type or args.save_type=="all":
-        _, thresh = cv2.threshold(maskpred.astype(np.uint8) , 127, 255, 0)
+        _, thresh = cv2.threshold(maskpred.astype(np.uint8) , args.confidence*255, 255, 0)
         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         imgmod2 = imgmasked.copy()
-        imgmod2 = np.where(masknorm3<127,imgmod2/2,imgmod2)
+        imgmod2 = np.where(masknorm3<args.confidence*255,imgmod2/2,imgmod2)
         cv2.drawContours(imgmod2, contours, -1, (0, 0, 255), 1)
         ret_dimmed=imgmod2
     if "contour" in args.save_type or args.save_type=="all":
-        _, thresh = cv2.threshold(maskpred.astype(np.uint8) , 127, 255, 0)
+        _, thresh = cv2.threshold(maskpred.astype(np.uint8) , args.confidence*255, 255, 0)
         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         imgmod3 = imgmasked.copy()
-        cv2.drawContours(imgmod3, contours, -1, (0, 0, 255), 1)
+        cv2.drawContours(imgmod3, contours, -1, (0, 0, 255), args.contourwidth)
         ret_contoured=imgmod3
     stop_img = timeit.default_timer()
     duration_img = stop_img-start_img-init_duration
@@ -309,6 +319,8 @@ def process_image(img_orig,initital_run):
 if __name__ == '__main__':
 
     args = parse_args()
+    if args.pred_folder is None:
+        args.pred_folder = args.input
     if not args.pred_folder.endswith("/"):
         args.pred_folder=args.pred_folder+"/"
     isExist = os.path.exists(args.pred_folder)

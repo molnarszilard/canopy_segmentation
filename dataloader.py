@@ -6,7 +6,7 @@ import numpy as np
 
 class DataLoader(data.Dataset):
     
-    def __init__(self, root='./dataset', train=True,cs="rgb",img_height=480,img_width=640):
+    def __init__(self, root='./dataset', train=True,cs="rgb",img_height=360,img_width=640):
         self.root = Path(root)
         self.cs=cs
         self.height=img_height
@@ -56,7 +56,7 @@ class DataLoader(data.Dataset):
         maskgt = np.moveaxis(maskgt,-1,0)
         # print(maskgt.shape)
         # if self.cs=="rgb":
-            # image_input/=255
+        #     image_input/=255
         return image_input, maskgt/255
 
     def __len__(self):

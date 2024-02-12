@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('--dim', default=False, type=bool, help='dim the pixels that are not segmented, or leave them black?')
     parser.add_argument('--cs', default='rgb', type=str, help='color space: rgb, lab')
     parser.add_argument('--save_type', default="binary", type=str, help='do you want to save the mask, the masked image, the dimmed image, or draw a contour: masking, binary, dim, contour, all')
-    parser.add_argument("--proc_height", default=480,type=int,help="processing height")
+    parser.add_argument("--proc_height", default=360,type=int,help="processing height")
     parser.add_argument("--proc_width", default=640,type=int,help="processing width")
     parser.add_argument('--start_height', default=None, type=int, help='resize the input into this size, then it will be splitted to proc_height')
     parser.add_argument('--start_width', default=None, type=int, help='resize the input into this size, then it will be splitted to proc_width')
@@ -254,7 +254,7 @@ def process_image(img_orig):
         sub_image = torch.from_numpy(sub_image).float().unsqueeze(0)
         if args.cuda:
             sub_image = sub_image.cuda()
-        sub_maskpred = net(sub_image) 
+        sub_maskpred = net(sub_image/255) 
         # print("min,mean,max:%f, %f, %f"%(sub_maskpred.min(),sub_maskpred.mean(),sub_maskpred.max()))
         sub_maskpred=sub_maskpred[0].cpu().detach().numpy()*255    
         sub_maskpred=sub_maskpred.astype(np.uint8)
@@ -301,7 +301,7 @@ def process_image(img_orig):
         _, thresh = cv2.threshold(maskpred.astype(np.uint8) , 127, 255, 0)
         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         imgmod3 = imgmasked.copy()
-        cv2.drawContours(imgmod3, contours, -1, (0, 0, 255), 1)
+        cv2.drawContours(imgmod3, contours, -1, (0, 0, 255), 2)
         ret_contoured=imgmod3
     return ret_mask, ret_masked, ret_dimmed, ret_contoured    
 
@@ -378,7 +378,7 @@ if __name__ == '__main__':
                 video_dimmed = cv2.VideoWriter(save_path+args.sufix+"_dim.mp4", fourcc, fps, (video_width,video_height))
             if "contour" in args.save_type or args.save_type=="all":
                 video_contoured = cv2.VideoWriter(save_path+args.sufix+"_contour.mp4", fourcc, fps, (video_width,video_height))
-            for currentFrame in range(0,totalFrames,args.frames):
+            for currentFrame in range(0,int(totalFrames),args.frames):
                 progress(currentFrame,totalFrames,"frames")
                 cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                 ret, img = cap.read()
@@ -457,11 +457,12 @@ if __name__ == '__main__':
                             video_dimmed = cv2.VideoWriter(save_path_dimmed, fourcc, int(fps), (video_width,video_height))
                         if "contour" in args.save_type or args.save_type=="all":
                             video_contoured = cv2.VideoWriter(save_path_contoured, fourcc, int(fps), (video_width,video_height))
-                    for currentFrame in range(0,totalFrames,args.frames):
+                    for currentFrame in range(0,int(totalFrames),args.frames):
                         progress(currentFrame,totalFrames,"frames")
                         cap.set(cv2.CAP_PROP_POS_FRAMES,currentFrame)
                         ret, img = cap.read()
-                        res_binary, res_masked, res_dimmed, res_contoured=process_image(img)
+                        if cap is not None:
+                            res_binary, res_masked, res_dimmed, res_contoured=process_image(img)
                         if "binary" in args.save_type or args.save_type=="all":
                             video_binary.write(res_binary.astype(np.uint8))
                         if "masking" in args.save_type or args.save_type=="all":

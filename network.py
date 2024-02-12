@@ -126,13 +126,19 @@ class NetworkModule(nn.Module):
             c4 = self.layer3(c3)
         if self.size in ['large']:
             c5 = self.layer4(c4)
+            
 
         # Top-down
         if self.size in ['large']:
+            # print(c5.shape)
             p5 = self.toplayer(c5)
+            # print(p5.shape)
             p5b = self.latlayer1(c4)
+            # print(p5b.shape)
             p4 = self._upsample_add(p5, p5b)
+            # print(p4.shape)
             p4 = self.smooth1(p4)
+            # print(p4.shape)
         if self.size in ['medium','large']:
             if self.size in ['medium']:
                 p4 = self.latlayer1(c4)
