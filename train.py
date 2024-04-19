@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument('--momentum', default=0.9, type=float, help='training momentum')
     parser.add_argument('--eps', default=1e-8, type=float, help='eps for adam optimizer')
     parser.add_argument('--r', dest='resume', default=False, type=bool, help='resume checkpoint or not')
-    parser.add_argument('--s', dest='session', default=1, type=int, help='training session')
+    parser.add_argument('--s', dest='session', default="", type=str, help='training session')
     parser.add_argument('--save_epoch', dest='save_epoch', default=5, type=int, help='after how many epochs do you want the model to be saved')
     parser.add_argument('--save_images', dest='save_images', default=100, type=int, help='save every x-th image during the training to see its evolution, 0 - means off')
     parser.add_argument('--start_at', dest='start_epoch', default=0, type=int, help='epoch to start with')
@@ -140,7 +140,7 @@ if __name__ == '__main__':
         start = time.time()        
         train_data_iter = iter(train_dataloader)
         for step in range(iters_per_epoch):
-            data = train_data_iter.next()            
+            data = next(train_data_iter)            
             img,maskgt=data
             if args.cuda:
                 img = img.cuda()

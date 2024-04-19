@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--proc_width", default=640,type=int,help="processing width")
     parser.add_argument('--start_height', default=360, type=int, help='resize the input into this size, then it will be splitted to proc_height')
     parser.add_argument('--start_width', default=640, type=int, help='resize the input into this size, then it will be splitted to proc_width')
-    parser.add_argument('--confidence', default=0.1, type=float, help='confidence threshold')
+    parser.add_argument('--confidence', default=0.5, type=float, help='confidence threshold, if confidence equals zero or None, not thresholding is performed')
     parser.add_argument('--contourwidth', default=1, type=int, help='width of the contour line')
     args = parser.parse_args()
     return args
@@ -230,7 +230,8 @@ def assemble(img,masks):
         maskpred = masks[0]
         index=index+1
     # maskpred=maskpred/int(maskpred.max())*255
-    maskpred = np.where(maskpred<args.confidence*255,0,255)
+    if args.confidence>0:
+        maskpred = np.where(maskpred<args.confidence*255,0,255)
     # print(maskpred.max())
     return maskpred
 
@@ -271,19 +272,23 @@ def process_image(img_orig,initital_run):
         duration_split+=stop-start
         sub_maskpred=sub_maskpred[0,0].cpu().detach().numpy()*255       
         # sub_maskpred = np.moveaxis(sub_maskpred,0,-1)
-        sub_maskpred = np.where(sub_maskpred<args.confidence*255,0,255)
+        if args.confidence>0:
+            sub_maskpred = np.where(sub_maskpred<args.confidence*255,0,255)
         if splitted_images[i].shape[0]!=args.proc_height or splitted_images[i].shape[1]!=args.proc_width:
             sub_maskpred = cv2.resize(sub_maskpred,(splitted_images[i].shape[1],splitted_images[i].shape[0]))
-            sub_maskpred = np.where(sub_maskpred<args.confidence*255,0,255)
+            if args.confidence>0:
+                sub_maskpred = np.where(sub_maskpred<args.confidence*255,0,255)
         result_masks.append(sub_maskpred)
 
     if len(result_masks)>1:
         maskpred=assemble(proc_img,result_masks).astype(np.float32)
     else:
         maskpred=result_masks[0]
-    maskpred = np.where(maskpred<args.confidence*255,0,255).astype(np.float32)
+    if args.confidence>0:
+            maskpred = np.where(maskpred<args.confidence*255,0,255).astype(np.float32)
     maskpred = cv2.resize(maskpred,(imgmasked.shape[1],imgmasked.shape[0])).astype(np.uint8)
-    maskpred = np.where(maskpred<args.confidence*255,0,255)
+    if args.confidence>0:
+        maskpred = np.where(maskpred<args.confidence*255,0,255)
     masknorm3 = np.zeros((maskpred.shape[0],maskpred.shape[1],3), np.uint8)
     masknorm3[:,:,0]=maskpred
     masknorm3[:,:,1]=maskpred

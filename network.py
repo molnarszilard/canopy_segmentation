@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision.models.resnet import resnet101
+from torchvision.models import ResNet101_Weights
 
 def agg_node(in_planes, out_planes):
     return nn.Sequential(
@@ -35,7 +36,7 @@ class NetworkModule(nn.Module):
     def __init__(self, pretrained=True, fixed_feature_weights=False,size='medium'):
         super(NetworkModule, self).__init__()
         self.size = size
-        resnet = resnet101(pretrained=pretrained)
+        resnet = resnet101(weights=ResNet101_Weights.DEFAULT)
 
         # Freeze those weights
         if fixed_feature_weights:
