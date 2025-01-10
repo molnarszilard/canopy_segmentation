@@ -1,6 +1,6 @@
 # Proximal Vine Canopy Segmentation based on Feature Pyramid Networks
 
-In this repo, we provide the code for our FPN-based canopy segmentation method.
+In this repo, we provide the code for our FPN-based canopy segmentation method. This work was published at the [22nd IFAC World Congress](https://www.sciencedirect.com/science/article/pii/S240589632300441X).
 
 ## Abstract
 
